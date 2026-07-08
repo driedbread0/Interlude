@@ -1,0 +1,123 @@
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-canvas text-ink antialiased;
+  }
+
+  body {
+    @apply min-h-screen font-ui;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  ::selection {
+    @apply bg-cobalt text-porcelain;
+  }
+}
+
+@layer components {
+  .rule-label {
+    @apply font-mono text-[10px] font-semibold uppercase tracking-normal text-muted;
+  }
+
+  .display-title {
+    @apply font-display font-bold tracking-normal text-ink;
+  }
+
+  .signal-surface {
+    @apply border border-rule-strong bg-paper shadow-insetline;
+  }
+
+  .instrument-panel {
+    @apply border border-rule bg-porcelain shadow-crisp;
+  }
+
+  .annotation-panel {
+    @apply border border-rule bg-paper shadow-crisp;
+  }
+
+  .hard-button {
+    @apply border border-rule bg-porcelain px-3 py-2 text-sm font-semibold text-ink transition duration-150 ease-instrument hover:border-cobalt hover:text-cobalt focus:outline-none focus:ring-2 focus:ring-cobalt/20;
+  }
+
+  .blue-button {
+    @apply bg-cobalt px-4 py-3 font-display text-base font-bold text-porcelain transition duration-150 ease-instrument hover:bg-cobalt-deep disabled:cursor-not-allowed disabled:bg-rule-strong;
+  }
+
+  .technical-value {
+    @apply font-mono font-semibold tracking-normal text-ink;
+  }
+
+  .angled-cut {
+    clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+  }
+
+  .grid-paper {
+    background-image:
+      linear-gradient(to right, rgba(159, 168, 181, 0.26) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(159, 168, 181, 0.22) 1px, transparent 1px);
+    background-size: 42px 42px;
+  }
+
+  .workstation-region {
+    @apply border border-rule-strong bg-paper shadow-insetline;
+    background-image:
+      linear-gradient(to right, rgba(159, 168, 181, 0.16) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(159, 168, 181, 0.12) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
+
+  .signal-ruler {
+    background-image:
+      repeating-linear-gradient(
+        to right,
+        rgba(159, 168, 181, 0.8) 0,
+        rgba(159, 168, 181, 0.8) 1px,
+        transparent 1px,
+        transparent 8.333%
+      );
+  }
+
+  .fine-ruler {
+    background-image:
+      repeating-linear-gradient(
+        to right,
+        rgba(159, 168, 181, 0.58) 0,
+        rgba(159, 168, 181, 0.58) 1px,
+        transparent 1px,
+        transparent 20px
+      );
+  }
+}
+
+@keyframes workspaceIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes intakeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

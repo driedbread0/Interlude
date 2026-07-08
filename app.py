@@ -1,0 +1,214 @@
+import base64
+import re
+import uuid
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
+
+import Interlude
+
+
+BASE_DIR = Path(__file__).parent
+STATIC_DIR = BASE_DIR / "static"
+DIST_DIR = BASE_DIR / "dist"
+UPLOAD_DIR = BASE_DIR / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
+PROJECTS = {}
+
+ALLOWED_EXTENSIONS = {
+    ".aiff",
+    ".aif",
+    ".flac",
+    ".m4a",
+    ".mp3",
+    ".ogg",
+    ".wav",
+}
+
+app = FastAPI(title="Interlude")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+if (DIST_DIR / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets"), name="assets")
+
+
+class AnalyzeRequest(BaseModel):
+    filename: str
+    file_data: str
+    extra_prompt: str = ""
+    root: str | None = None
+    scale_type: str | None = None
+
+
+class FollowUpRequest(BaseModel):
+    project_id: str
+    question: str
+
+
+def clean_choice(value):
+    if value in (None, "", "auto"):
+        return None
+
+    return value
+
+
+def safe_upload_path(filename):
+    original_name = Path(filename).name
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", original_name)
+    suffix = Path(safe_name).suffix.lower()
+
+    if suffix not in ALLOWED_EXTENSIONS:
+        supported = ", ".join(sorted(ALLOWED_EXTENSIONS))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported audio file type. Use one of: {supported}",
+        )
+
+    return UPLOAD_DIR / f"{uuid.uuid4().hex}_{safe_name}"
+
+
+def decode_file(file_data):
+    try:
+        if "," in file_data:
+            file_data = file_data.split(",", 1)[1]
+
+        return base64.b64decode(file_data, validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid uploaded file data") from exc
+
+
+@app.get("/")
+async def index():
+    if (DIST_DIR / "index.html").exists():
+        return FileResponse(DIST_DIR / "index.html")
+
+    raise HTTPException(
+        status_code=503,
+        detail="React build not found. Run npm run build or npm run dev.",
+    )
+
+
+@app.get("/api/options")
+async def options():
+    return {
+        "roots": list(Interlude.NOTE_TO_INDEX.keys()),
+        "scales": sorted(Interlude.SCALE_PATTERNS.keys()),
+    }
+
+
+@app.post("/api/analyze")
+async def analyze(request: AnalyzeRequest):
+    root = clean_choice(request.root)
+    scale_type = clean_choice(request.scale_type)
+
+    if bool(root) != bool(scale_type):
+        raise HTTPException(
+            status_code=400,
+            detail="Choose both a root and scale/mode, or leave both set to auto.",
+        )
+
+    if root and root not in Interlude.NOTE_TO_INDEX:
+        raise HTTPException(status_code=400, detail="Unsupported root selection.")
+
+    if scale_type and scale_type not in Interlude.SCALE_PATTERNS:
+        raise HTTPException(status_code=400, detail="Unsupported scale/mode selection.")
+
+    upload_path = safe_upload_path(request.filename)
+    upload_path.write_bytes(decode_file(request.file_data))
+
+    try:
+        result = await run_in_threadpool(
+            Interlude.run_interlude_analysis,
+            str(upload_path),
+            root,
+            scale_type,
+            request.extra_prompt,
+        )
+    finally:
+        upload_path.unlink(missing_ok=True)
+
+    project_id = uuid.uuid4().hex
+    original_name = Path(request.filename).name
+    result["project"]["id"] = project_id
+    result["project"]["title"] = Path(original_name).stem
+    result["project"]["filename"] = original_name
+    PROJECTS[project_id] = result
+
+    return result
+
+
+@app.get("/api/projects")
+async def projects():
+    return {
+        "projects": [
+            {
+                "id": project_id,
+                "title": item["project"]["title"],
+                "filename": item["project"]["filename"],
+                "created_at": item["project"]["created_at"],
+                "duration": item["project"]["duration"],
+                "key": item["key"],
+                "scores": item["scores"],
+            }
+            for project_id, item in reversed(PROJECTS.items())
+        ]
+    }
+
+
+@app.get("/api/projects/{project_id}")
+async def project_detail(project_id: str):
+    project = PROJECTS.get(project_id)
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    return project
+
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project(project_id: str):
+    if project_id not in PROJECTS:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    del PROJECTS[project_id]
+
+    return {"deleted": project_id}
+
+
+@app.post("/api/follow-up")
+async def follow_up(request: FollowUpRequest):
+    project = PROJECTS.get(request.project_id)
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    if not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    context = (
+        f"Project: {project['project']['title']}\n"
+        f"Summary: {project['summary']}\n"
+        f"Scores: {project['scores']}\n"
+        f"Key: {project['key']}\n"
+        f"Feedback: {project['response']}\n"
+    )
+    result = await run_in_threadpool(
+        Interlude.ask_follow_up,
+        context,
+        request.question,
+    )
+
+    return result

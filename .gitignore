@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+node_modules/
+dist/
+uploads/
+
+.env
+.env.*
+!.env.example
+
+# Local research/prototype scripts that are useful while experimenting but
+# should not be part of the app source.
+*_Sample.py
+*_Example.py
+API_Test.py
+metric_changes_explanation.md

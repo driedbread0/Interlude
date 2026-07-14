@@ -22,6 +22,7 @@ export default function App() {
   const [autoKey, setAutoKey] = useState(true);
   const [root, setRoot] = useState("C");
   const [scaleType, setScaleType] = useState("major");
+  const [separateVocals, setSeparateVocals] = useState(false);
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
@@ -59,6 +60,7 @@ export default function App() {
         extraPrompt,
         root: autoKey ? "auto" : root,
         scaleType: autoKey ? "auto" : scaleType,
+        separateVocals,
       });
       setResult(analysis);
       setStatus("workspace");
@@ -98,6 +100,7 @@ export default function App() {
     setResult(null);
     setSelectedFile(null);
     setExtraPrompt("");
+    setSeparateVocals(false);
     setStatus("idle");
     setError("");
   }
@@ -126,6 +129,8 @@ export default function App() {
             setRoot={setRoot}
             scaleType={scaleType}
             setScaleType={setScaleType}
+            separateVocals={separateVocals}
+            setSeparateVocals={setSeparateVocals}
             onAnalyze={handleAnalyze}
             status={status}
             projects={projects}

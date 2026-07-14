@@ -16,12 +16,17 @@ export default function UploadPage({
   setRoot,
   scaleType,
   setScaleType,
+  separateVocals,
+  setSeparateVocals,
   onAnalyze,
   status,
   projects,
   onOpenProjects,
   onSelectProject,
 }) {
+  const vocalCapability = options?.capabilities?.vocal_separation;
+  const vocalSeparationAvailable = Boolean(vocalCapability?.available);
+
   return (
     <main className="min-h-screen overflow-hidden bg-canvas text-ink">
       <div className="mx-auto grid min-h-screen max-w-[1540px] grid-rows-[auto_1fr] px-6 py-5">
@@ -46,6 +51,29 @@ export default function UploadPage({
                 scaleType={scaleType}
                 setScaleType={setScaleType}
               />
+              <section className="border-t border-rule px-4 py-3">
+                <label
+                  className={`flex items-start gap-3 ${
+                    vocalSeparationAvailable ? "cursor-pointer" : "cursor-not-allowed opacity-60"
+                  }`}
+                >
+                  <input
+                    className="mt-0.5 h-4 w-4 accent-cobalt"
+                    type="checkbox"
+                    checked={separateVocals}
+                    onChange={(event) => setSeparateVocals(event.target.checked)}
+                    disabled={!vocalSeparationAvailable || status === "analyzing"}
+                  />
+                  <span>
+                    <span className="rule-label block text-ink">Isolate vocals for pitch tracking</span>
+                    <span className="mt-1 block text-xs leading-5 text-muted">
+                      {vocalSeparationAvailable
+                        ? `Uses ${vocalCapability.model || "Demucs"}; analysis will take longer.`
+                        : "Optional setup required: install requirements-vocal.txt and restart."}
+                    </span>
+                  </span>
+                </label>
+              </section>
               <AnalysisNoteInput value={extraPrompt} onChange={setExtraPrompt} />
               <section className="border-t border-rule bg-[rgba(31,94,255,0.06)] p-4">
                 <div className="mb-3 flex items-center justify-between">

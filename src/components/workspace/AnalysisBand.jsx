@@ -2,23 +2,28 @@ import ChromaLanes from "../visuals/ChromaLanes";
 import MetricLaneSuite from "../visuals/MetricLaneSuite";
 
 export default function AnalysisBand({ result }) {
+  const scores = result?.scores || {};
   const metrics = [
     {
       title: "Tempo stability",
       kind: "beat grid",
       points: result?.charts?.tempo,
+      score: scores.tempo_stability,
       color: "#1F5EFF",
     },
     {
       title: "Pitch accuracy",
       kind: "phrase pitch",
       points: result?.charts?.pitch,
+      score: scores.pitch_accuracy,
       color: "#00A887",
+      emptyLabel: "no reliable pitch windows",
     },
     {
       title: "Harmonic complexity",
       kind: "bar harmony",
       points: result?.charts?.harmony,
+      score: scores.harmonic_complexity,
       color: "#6E3FF2",
       inverse: true,
     },
@@ -26,6 +31,7 @@ export default function AnalysisBand({ result }) {
       title: "Dynamics contour",
       kind: "RMS trend",
       points: result?.charts?.dynamics,
+      score: scores.dynamics_variation,
       color: "#006C5A",
     },
   ];

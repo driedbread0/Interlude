@@ -32,3 +32,16 @@ export function formatDate(value) {
     minute: "2-digit",
   }).format(new Date(value));
 }
+
+export function normalizeDiagnosticText(value) {
+  if (!value) return "";
+
+  return String(value)
+    .replace(/\\\((.*?)\\\)/gs, "$1")
+    .replace(/\\\[(.*?)\\\]/gs, "$1")
+    .replace(/\$\$([^$]+)\$\$/gs, "$1")
+    .replace(/\$([^$]+)\$/g, "$1")
+    .replace(/\\(?:text|mathrm|mathbf|emph)\{([^{}]*)\}/g, "$1")
+    .replace(/\\times/g, "x")
+    .replace(/\\%/g, "%");
+}

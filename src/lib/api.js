@@ -36,7 +36,7 @@ export async function deleteProject(projectId) {
   });
 }
 
-export async function analyzeFile({ file, extraPrompt, root, scaleType }) {
+export async function analyzeFile({ file, extraPrompt, root, scaleType, separateVocals = false }) {
   const fileData = await readFileAsDataUrl(file);
 
   return requestJson("/api/analyze", {
@@ -50,6 +50,7 @@ export async function analyzeFile({ file, extraPrompt, root, scaleType }) {
       extra_prompt: extraPrompt,
       root,
       scale_type: scaleType,
+      separate_vocals: separateVocals,
     }),
   });
 }

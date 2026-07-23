@@ -49,6 +49,33 @@ MIN_KEY_CORRELATION_MARGIN = 0.10
 MIN_MODE_CORRELATION_ADVANTAGE = 0.10
 MIN_KEY_PROFILE_VARIATION = 0.05
 MIN_EFFECTIVE_PITCH_FRAMES = 3.0
+MIN_LOCAL_KEY_CORRELATION = 0.55
+MIN_LOCAL_KEY_MARGIN = 0.05
+HARMONY_KEY_CONTEXT_WINDOWS = 2
+CHROMA_SUSTAIN_FRAMES = 5
+CHROMA_TRIM_FRACTION = 0.10
+ACTIVE_PITCH_CLASS_THRESHOLD = 0.10
+MIN_CHORD_SIMILARITY = 0.62
+MIN_CHORD_MARGIN = 0.015
+CHORD_COLOR_SELECTION_PENALTY = 0.08
+CHORD_CHROMA_FMIN = "C2"
+CHORD_CHROMA_OCTAVES = 4
+MAX_HARMONIC_CHANGES_PER_BAR = 4.0
+MAX_MODULATION_DEVIATION_REDUCTION = 0.55
+MIN_MODULATION_CONFIDENCE = 0.30
+MIN_MODULATION_NONCENTERED_RATIO = 0.50
+HARMONIC_SIGMOID_CENTER = 0.24
+HARMONIC_SIGMOID_SCALE = 0.10
+HARMONIC_HOTSPOT_THRESHOLD = 0.60
+
+HARMONIC_COMPLEXITY_WEIGHTS = {
+    "diatonic_deviation": 0.08,
+    "harmonic_movement": 0.34,
+    "tonal_instability": 0.07,
+    "voicing_density": 0.03,
+    "modulation_load": 0.16,
+    "harmonic_color": 0.32,
+}
 
 VOCAL_SEPARATION_MODEL = "htdemucs"
 
@@ -186,6 +213,109 @@ DERIVED_MODE_CONFIG = {
         "evidence": ((1, 2), (6, 7)),
     },
 }
+
+CHORD_QUALITIES = {
+    "major": {"intervals": ((0, 1.0), (4, 0.9), (7, 0.75)), "color": 0.00},
+    "minor": {"intervals": ((0, 1.0), (3, 0.9), (7, 0.75)), "color": 0.00},
+    "sus2": {"intervals": ((0, 1.0), (2, 0.85), (7, 0.75)), "color": 0.08},
+    "sus4": {"intervals": ((0, 1.0), (5, 0.85), (7, 0.75)), "color": 0.08},
+    "augmented": {"intervals": ((0, 1.0), (4, 0.9), (8, 0.8)), "color": 0.35},
+    "diminished": {"intervals": ((0, 1.0), (3, 0.9), (6, 0.8)), "color": 0.35},
+    "major6": {
+        "intervals": ((0, 1.0), (4, 0.9), (7, 0.7), (9, 0.65)),
+        "color": 0.24,
+    },
+    "minor6": {
+        "intervals": ((0, 1.0), (3, 0.9), (7, 0.7), (9, 0.65)),
+        "color": 0.30,
+    },
+    "dominant7": {
+        "intervals": ((0, 1.0), (4, 0.9), (7, 0.65), (10, 0.8)),
+        "color": 0.36,
+    },
+    "major7": {
+        "intervals": ((0, 1.0), (4, 0.9), (7, 0.65), (11, 0.8)),
+        "color": 0.44,
+    },
+    "minor7": {
+        "intervals": ((0, 1.0), (3, 0.9), (7, 0.65), (10, 0.8)),
+        "color": 0.38,
+    },
+    "minor_major7": {
+        "intervals": ((0, 1.0), (3, 0.9), (7, 0.65), (11, 0.8)),
+        "color": 0.72,
+    },
+    "half_diminished7": {
+        "intervals": ((0, 1.0), (3, 0.9), (6, 0.75), (10, 0.8)),
+        "color": 0.62,
+    },
+    "diminished7": {
+        "intervals": ((0, 1.0), (3, 0.9), (6, 0.75), (9, 0.8)),
+        "color": 0.68,
+    },
+    "add9": {
+        "intervals": ((0, 1.0), (2, 0.72), (4, 0.9), (7, 0.65)),
+        "color": 0.34,
+    },
+    "minor_add9": {
+        "intervals": ((0, 1.0), (2, 0.72), (3, 0.9), (7, 0.65)),
+        "color": 0.42,
+    },
+    "dominant9": {
+        "intervals": ((0, 1.0), (2, 0.7), (4, 0.9), (7, 0.55), (10, 0.8)),
+        "color": 0.64,
+    },
+    "major9": {
+        "intervals": ((0, 1.0), (2, 0.7), (4, 0.9), (7, 0.55), (11, 0.8)),
+        "color": 0.68,
+    },
+    "minor9": {
+        "intervals": ((0, 1.0), (2, 0.7), (3, 0.9), (7, 0.55), (10, 0.8)),
+        "color": 0.70,
+    },
+    "dominant_b9": {
+        "intervals": ((0, 1.0), (1, 0.75), (4, 0.9), (7, 0.5), (10, 0.8)),
+        "color": 0.92,
+    },
+    "dominant_sharp9": {
+        "intervals": ((0, 1.0), (3, 0.75), (4, 0.9), (7, 0.5), (10, 0.8)),
+        "color": 0.96,
+    },
+}
+
+
+def chord_movement_family(quality):
+    """Collapse extensions to the root/triad identity used for movement."""
+    if quality in {
+        "major",
+        "major6",
+        "dominant7",
+        "major7",
+        "add9",
+        "dominant9",
+        "major9",
+        "dominant_b9",
+        "dominant_sharp9",
+    }:
+        return "major"
+
+    if quality in {
+        "minor",
+        "minor6",
+        "minor7",
+        "minor_major7",
+        "minor_add9",
+        "minor9",
+    }:
+        return "minor"
+
+    if quality in {"diminished", "half_diminished7", "diminished7"}:
+        return "diminished"
+
+    if quality in {"sus2", "sus4"}:
+        return "suspended"
+
+    return quality
 
 
 class AnalysisInputError(ValueError):
@@ -925,39 +1055,776 @@ def detect_key_and_mode(chroma_profile, allow_derived_modes=True):
     }
 
 
-def detect_sustained_modulations(harmony_windows, root, scale_type):
-    """Find sustained, confident changes of tonal center."""
-    run_start = None
-    run_key = None
-    sustained_window_numbers = set()
+def trimmed_mean(values, trim_fraction=CHROMA_TRIM_FRACTION, axis=-1):
+    """Aggregate an array while discarding equal low/high transient tails."""
+    values = np.asarray(values, dtype=float)
 
-    for index, window in enumerate(harmony_windows):
-        local_key = window["local_root"]
-        is_different_key = local_key != root
-        is_confident = (
-            window["local_key_correlation"] >= MIN_KEY_CORRELATION
-            and window["local_key_correlation_margin"]
-            >= MIN_KEY_CORRELATION_MARGIN
+    if values.shape[axis] == 0:
+        output_shape = list(values.shape)
+        del output_shape[axis]
+        return np.full(output_shape, np.nan)
+
+    sorted_values = np.sort(values, axis=axis)
+    trim_count = int(np.floor(values.shape[axis] * trim_fraction))
+
+    if trim_count == 0 or trim_count * 2 >= values.shape[axis]:
+        return np.mean(sorted_values, axis=axis)
+
+    keep_indices = np.arange(trim_count, values.shape[axis] - trim_count)
+    return np.mean(np.take(sorted_values, keep_indices, axis=axis), axis=axis)
+
+
+def preprocess_harmonic_chroma(chroma):
+    """Normalize chroma per frame and favor pitch classes sustained over time."""
+    chroma = np.clip(np.nan_to_num(chroma, nan=0.0), 0.0, None)
+    frame_totals = np.sum(chroma, axis=0, keepdims=True)
+    normalized = np.divide(
+        chroma,
+        frame_totals,
+        out=np.zeros_like(chroma, dtype=float),
+        where=frame_totals > 1e-12,
+    )
+    active = normalized >= ACTIVE_PITCH_CLASS_THRESHOLD
+    sustain_support = scipy.ndimage.uniform_filter1d(
+        active.astype(float),
+        size=CHROMA_SUSTAIN_FRAMES,
+        axis=1,
+        mode="nearest",
+    )
+    sustain_weighted = normalized * (0.65 + 0.70 * sustain_support)
+    weighted_totals = np.sum(sustain_weighted, axis=0, keepdims=True)
+    return np.divide(
+        sustain_weighted,
+        weighted_totals,
+        out=np.zeros_like(sustain_weighted),
+        where=weighted_totals > 1e-12,
+    )
+
+
+def aggregate_chroma_profile(chroma):
+    """Return a normalized trimmed-mean pitch-class profile."""
+    if chroma.shape[1] == 0:
+        return np.zeros(12)
+
+    profile = np.nan_to_num(trimmed_mean(chroma, axis=1), nan=0.0)
+    total = np.sum(profile)
+    return profile / total if total > 1e-12 else np.zeros(12)
+
+
+def estimate_voicing_density(chroma):
+    """Estimate simultaneous pitch-class count separately from chromaticity."""
+    if chroma.shape[1] == 0:
+        return {
+            "voicing_density": None,
+            "estimated_active_pitch_classes": None,
+            "threshold_active_pitch_classes": None,
+        }
+
+    frame_totals = np.sum(chroma, axis=0)
+    valid = frame_totals > 1e-12
+
+    if not np.any(valid):
+        return {
+            "voicing_density": None,
+            "estimated_active_pitch_classes": None,
+            "threshold_active_pitch_classes": None,
+        }
+
+    local = chroma[:, valid]
+    frame_max = np.max(local, axis=0, keepdims=True)
+    active = (local >= ACTIVE_PITCH_CLASS_THRESHOLD) & (local >= 0.25 * frame_max)
+    active_counts = np.maximum(1.0, np.sum(active, axis=0).astype(float))
+    entropy = -np.sum(local * np.log(np.maximum(local, 1e-12)), axis=0)
+    effective_counts = np.exp(entropy)
+    estimated_counts = 0.65 * active_counts + 0.35 * effective_counts
+    estimated_count = float(trimmed_mean(estimated_counts))
+    threshold_count = float(trimmed_mean(active_counts))
+
+    return {
+        "voicing_density": float(np.clip((estimated_count - 1.0) / 7.0, 0.0, 1.0)),
+        "estimated_active_pitch_classes": estimated_count,
+        "threshold_active_pitch_classes": threshold_count,
+    }
+
+
+def build_chord_templates():
+    """Create normalized triad, seventh, added-note, and altered templates."""
+    templates = []
+
+    for root_index, root in INDEX_TO_NOTE.items():
+        for quality, configuration in CHORD_QUALITIES.items():
+            template = np.zeros(12)
+
+            for interval, weight in configuration["intervals"]:
+                template[(root_index + interval) % 12] = weight
+
+            template /= np.linalg.norm(template)
+            templates.append(
+                {
+                    "root": root,
+                    "quality": quality,
+                    "label": f"{root}:{quality}",
+                    "movement_family": chord_movement_family(quality),
+                    "movement_label": f"{root}:{chord_movement_family(quality)}",
+                    "color_complexity": configuration["color"],
+                    "template": template,
+                }
+            )
+
+    return templates
+
+
+CHORD_TEMPLATES = build_chord_templates()
+
+
+def estimate_chord_region(chroma_profile):
+    """Estimate one chord region with guarded quality and color evidence."""
+    profile = np.asarray(chroma_profile, dtype=float)
+    magnitude = np.linalg.norm(profile)
+
+    if profile.shape != (12,) or magnitude <= 1e-12:
+        return {
+            "label": None,
+            "root": None,
+            "quality": None,
+            "similarity": 0.0,
+            "margin": 0.0,
+            "quality_confidence": 0.0,
+            "color_complexity": 0.0,
+            "color_evidence": 0.0,
+            "ambiguous": True,
+        }
+
+    normalized = profile / magnitude
+    candidates = sorted(
+        (
+            {
+                **{key: value for key, value in candidate.items() if key != "template"},
+                "similarity": float(np.dot(normalized, candidate["template"])),
+                "selection_score": float(
+                    np.dot(normalized, candidate["template"])
+                    - CHORD_COLOR_SELECTION_PENALTY
+                    * candidate["color_complexity"]
+                ),
+            }
+            for candidate in CHORD_TEMPLATES
+        ),
+        key=lambda item: item["selection_score"],
+        reverse=True,
+    )
+    best, runner_up = candidates[:2]
+    margin = float(max(0.0, best["selection_score"] - runner_up["selection_score"]))
+    ambiguous = (
+        best["similarity"] < MIN_CHORD_SIMILARITY
+        or margin < MIN_CHORD_MARGIN
+    )
+    similarity_confidence = float(
+        np.clip(
+            (best["similarity"] - MIN_CHORD_SIMILARITY)
+            / max(1e-12, 1.0 - MIN_CHORD_SIMILARITY),
+            0.0,
+            1.0,
+        )
+    )
+    margin_confidence = float(np.clip(margin / 0.08, 0.0, 1.0))
+    quality_confidence = float(
+        0.65 * similarity_confidence + 0.35 * margin_confidence
+    )
+    color_evidence = (
+        float(best["color_complexity"] * (0.40 + 0.60 * quality_confidence))
+        if not ambiguous
+        else 0.0
+    )
+    return {
+        **best,
+        "margin": margin,
+        "quality_confidence": quality_confidence,
+        "color_evidence": color_evidence,
+        "ambiguous": ambiguous,
+    }
+
+
+def build_chord_regions(chroma, chroma_times, beat_times, duration):
+    """Estimate and lightly deglitch beat-synchronous chord regions."""
+    boundaries = np.concatenate(
+        (
+            np.array([0.0]),
+            np.asarray(beat_times, dtype=float),
+            np.array([float(duration)]),
+        )
+    )
+    boundaries = np.unique(np.clip(boundaries, 0.0, float(duration)))
+
+    if len(boundaries) < 2:
+        boundaries = np.array([0.0, float(duration)])
+
+    regions = []
+    for start, end in zip(boundaries[:-1], boundaries[1:]):
+        if end - start <= 1e-4:
+            continue
+
+        in_region = (chroma_times >= start) & (chroma_times < end)
+        estimate = estimate_chord_region(aggregate_chroma_profile(chroma[:, in_region]))
+        regions.append(
+            {
+                "start": float(start),
+                "end": float(end),
+                **estimate,
+                "smoothed": False,
+            }
         )
 
-        if is_different_key and is_confident:
-            if run_key == local_key:
-                pass
-            else:
-                run_start = index
-                run_key = local_key
+    stabilized = [dict(region) for region in regions]
+    for index in range(1, len(regions) - 1):
+        previous = regions[index - 1]
+        current = regions[index]
+        following = regions[index + 1]
+
+        if (
+            not previous["ambiguous"]
+            and not following["ambiguous"]
+            and previous["label"] == following["label"]
+            and current["label"] != previous["label"]
+            and (
+                current["ambiguous"]
+                or current["margin"] < max(previous["margin"], following["margin"])
+            )
+        ):
+            stabilized[index].update(
+                {
+                    "label": previous["label"],
+                    "root": previous["root"],
+                    "quality": previous["quality"],
+                    "movement_family": previous["movement_family"],
+                    "movement_label": previous["movement_label"],
+                    "similarity": min(previous["similarity"], following["similarity"]),
+                    "margin": min(previous["margin"], following["margin"]),
+                    "quality_confidence": min(
+                        previous["quality_confidence"],
+                        following["quality_confidence"],
+                    ),
+                    "color_complexity": previous["color_complexity"],
+                    "color_evidence": min(
+                        previous["color_evidence"],
+                        following["color_evidence"],
+                    ),
+                    "ambiguous": False,
+                    "smoothed": True,
+                }
+            )
+
+    return stabilized
+
+
+def chord_transitions(chord_regions):
+    """Return confident changes between adjacent chord regions."""
+    transitions = []
+
+    for previous, current in zip(chord_regions[:-1], chord_regions[1:]):
+        if previous["ambiguous"] or current["ambiguous"]:
+            continue
+
+        previous_label = previous.get("movement_label", previous["label"])
+        current_label = current.get("movement_label", current["label"])
+        if previous_label != current_label:
+            transitions.append((previous_label, current_label))
+
+    return transitions
+
+
+def summarize_harmonic_movement(chord_regions, transition_counts):
+    """Measure chord changes, transition novelty, and chord-quality color."""
+    transitions = chord_transitions(chord_regions)
+    change_count = len(transitions)
+    bar_equivalents = max(len(chord_regions) / BEATS_PER_HARMONY_WINDOW, 0.25)
+    changes_per_bar = float(change_count / bar_equivalents)
+    novel_count = sum(transition_counts.get(transition, 0) == 1 for transition in transitions)
+    novel_ratio = float(novel_count / change_count) if change_count else 0.0
+    repeated_ratio = float(1.0 - novel_ratio) if change_count else 0.0
+    rate_score = float(
+        np.clip(changes_per_bar / MAX_HARMONIC_CHANGES_PER_BAR, 0.0, 1.0)
+    )
+    movement = float(0.75 * rate_score + 0.25 * novel_ratio)
+    confident_labels = [
+        region.get("movement_label", region["label"])
+        for region in chord_regions
+        if not region["ambiguous"]
+    ]
+    confident_regions = [
+        region for region in chord_regions if not region["ambiguous"]
+    ]
+    confident_duration = sum(
+        max(0.0, region["end"] - region["start"])
+        for region in confident_regions
+    )
+    mean_quality_color = (
+        float(
+            sum(
+                region.get("color_evidence", 0.0)
+                * max(0.0, region["end"] - region["start"])
+                for region in confident_regions
+            )
+            / confident_duration
+        )
+        if confident_duration > 0
+        else 0.0
+    )
+    colored_duration = sum(
+        max(0.0, region["end"] - region["start"])
+        for region in confident_regions
+        if region.get("color_complexity", 0.0) >= 0.24
+    )
+    altered_duration = sum(
+        max(0.0, region["end"] - region["start"])
+        for region in confident_regions
+        if region.get("color_complexity", 0.0) >= 0.80
+    )
+    quality_counts = {}
+    for region in confident_regions:
+        quality = region.get("quality")
+        if quality:
+            quality_counts[quality] = quality_counts.get(quality, 0) + 1
+    colored_chord_ratio = (
+        float(colored_duration / confident_duration)
+        if confident_duration > 0
+        else 0.0
+    )
+    altered_chord_ratio = (
+        float(altered_duration / confident_duration)
+        if confident_duration > 0
+        else 0.0
+    )
+    altered_salience = float(np.clip(altered_chord_ratio / 0.03, 0.0, 1.0))
+    harmonic_color = float(
+        np.clip(
+            0.25 * mean_quality_color
+            + 0.10 * colored_chord_ratio
+            + 0.65 * altered_salience,
+            0.0,
+            1.0,
+        )
+    )
+
+    return {
+        "harmonic_movement": movement,
+        "harmonic_color": harmonic_color,
+        "mean_quality_color": mean_quality_color,
+        "colored_chord_ratio": colored_chord_ratio,
+        "altered_chord_ratio": altered_chord_ratio,
+        "altered_salience": altered_salience,
+        "chord_quality_counts": quality_counts,
+        "chord_change_count": int(change_count),
+        "changes_per_bar": changes_per_bar,
+        "novel_transition_ratio": novel_ratio,
+        "repeated_transition_ratio": repeated_ratio,
+        "unique_chord_count": int(len(set(confident_labels))),
+        "chord_regions": [
+            {
+                "start": region["start"],
+                "end": region["end"],
+                "label": region["label"],
+                "quality": region.get("quality"),
+                "movement_label": region.get("movement_label", region["label"]),
+                "similarity": region["similarity"],
+                "margin": region["margin"],
+                "quality_confidence": region.get("quality_confidence", 0.0),
+                "color_complexity": region.get("color_complexity", 0.0),
+                "color_evidence": region.get("color_evidence", 0.0),
+                "ambiguous": region["ambiguous"],
+                "smoothed": region["smoothed"],
+            }
+            for region in chord_regions
+        ],
+    }
+
+
+def key_confidence_metadata(local_key, global_key):
+    """Describe local key strength relative to full-track evidence."""
+    correlation = float(local_key.get("correlation", 0.0))
+    margin = float(local_key.get("correlation_margin", 0.0))
+    global_correlation = float(global_key.get("correlation", 0.0))
+    global_margin = float(global_key.get("correlation_margin", 0.0))
+    correlation_reference = max(global_correlation, 0.40)
+    margin_reference = max(global_margin, 0.02)
+    required_correlation = min(
+        MIN_LOCAL_KEY_CORRELATION,
+        max(0.40, global_correlation * 0.75),
+    )
+    required_margin = min(
+        MIN_LOCAL_KEY_MARGIN,
+        max(0.02, global_margin * 0.75),
+    )
+    relative_correlation = float(np.clip(correlation / correlation_reference, 0.0, 1.0))
+    relative_margin = float(np.clip(margin / margin_reference, 0.0, 1.0))
+    score = float(0.70 * relative_correlation + 0.30 * relative_margin)
+    ambiguous = (
+        correlation < required_correlation
+        or margin < required_margin
+    )
+
+    if ambiguous:
+        level = "low"
+    elif correlation >= 0.70 and margin >= MIN_KEY_CORRELATION_MARGIN:
+        level = "high"
+    else:
+        level = "medium"
+
+    return {
+        "correlation": correlation,
+        "margin": margin,
+        "relative_correlation": relative_correlation,
+        "relative_margin": relative_margin,
+        "score": score,
+        "level": level,
+        "ambiguous": ambiguous,
+        "required_correlation": required_correlation,
+        "required_margin": required_margin,
+    }
+
+
+def harmonic_mode_family(scale_type):
+    """Group related modes when measuring continuity of one tonal center."""
+    if scale_type in {"major", "lydian", "mixolydian"}:
+        return "major_family"
+
+    if scale_type in {
+        "minor",
+        "dorian",
+        "phrygian",
+        "locrian",
+        "harmonic_minor",
+        "melodic_minor",
+    }:
+        return "minor_family"
+
+    return scale_type
+
+
+def modulation_confidence(window):
+    """Map correlation and margin above modulation thresholds to 0-1."""
+    correlation_strength = np.clip(
+        (window["local_key_correlation"] - MIN_KEY_CORRELATION)
+        / max(1e-12, 1.0 - MIN_KEY_CORRELATION),
+        0.0,
+        1.0,
+    )
+    margin_strength = np.clip(
+        (window["local_key_correlation_margin"] - MIN_KEY_CORRELATION_MARGIN)
+        / 0.20,
+        0.0,
+        1.0,
+    )
+    return float(0.65 * correlation_strength + 0.35 * margin_strength)
+
+
+def classify_modulation_windows(harmony_windows, root, scale_type):
+    """Find confident root-or-mode changes and their transition neighborhoods."""
+    main_state = (root, scale_type)
+    runs = []
+    run_start = None
+    run_state = None
+
+    def finish_run(end_index):
+        if run_start is None:
+            return
+
+        run_windows = harmony_windows[run_start:end_index]
+        if len(run_windows) < MIN_MODULATION_WINDOWS:
+            return
+
+        # A different short-window key label that mostly remains compatible
+        # with the global center is tonicization/chord movement, not enough
+        # evidence for a modulation without cadence-aware analysis.
+        noncentered_ratio = float(
+            np.mean(
+                [not window.get("tonally_centered", False) for window in run_windows]
+            )
+        )
+        if noncentered_ratio < MIN_MODULATION_NONCENTERED_RATIO:
+            return
+
+        confidence = float(
+            np.mean([modulation_confidence(window) for window in run_windows])
+        )
+
+        if confidence < MIN_MODULATION_CONFIDENCE:
+            return
+
+        runs.append(
+            {
+                "start_index": run_start,
+                "end_index": end_index - 1,
+                "root": run_state[0],
+                "scale_type": run_state[1],
+                "confidence": confidence,
+                "noncentered_window_ratio": noncentered_ratio,
+            }
+        )
+
+    for index, window in enumerate(harmony_windows):
+        state = (window["local_root"], window["local_scale_type"])
+        confident_change = (
+            not window["ambiguous"]
+            and state != main_state
+            and window["local_key_correlation"] >= MIN_KEY_CORRELATION
+            and window["local_key_correlation_margin"] >= MIN_KEY_CORRELATION_MARGIN
+        )
+        candidate_state = state if confident_change else None
+
+        if candidate_state == run_state and candidate_state is not None:
+            continue
+
+        finish_run(index)
+        run_start = index if candidate_state is not None else None
+        run_state = candidate_state
+
+    finish_run(len(harmony_windows))
+
+    modulation_numbers = set()
+    transition_numbers = set()
+    confidence_by_window = {}
+
+    for run in runs:
+        for index in range(run["start_index"], run["end_index"] + 1):
+            window_number = harmony_windows[index]["window"]
+            modulation_numbers.add(window_number)
+            confidence_by_window[window_number] = run["confidence"]
+
+        for index in {
+            run["start_index"] - 1,
+            run["start_index"],
+            run["end_index"],
+            run["end_index"] + 1,
+        }:
+            if 0 <= index < len(harmony_windows):
+                window_number = harmony_windows[index]["window"]
+                transition_numbers.add(window_number)
+                confidence_by_window[window_number] = max(
+                    confidence_by_window.get(window_number, 0.0),
+                    run["confidence"],
+                )
+
+    return {
+        "modulation_windows": modulation_numbers,
+        "transition_windows": transition_numbers,
+        "confidence_by_window": confidence_by_window,
+        "runs": [
+            {
+                "start_window": harmony_windows[run["start_index"]]["window"],
+                "end_window": harmony_windows[run["end_index"]]["window"],
+                "root": run["root"],
+                "scale_type": run["scale_type"],
+                "confidence": run["confidence"],
+                "noncentered_window_ratio": run["noncentered_window_ratio"],
+            }
+            for run in runs
+        ],
+    }
+
+
+def detect_sustained_modulations(harmony_windows, root, scale_type):
+    """Compatibility helper returning only sustained modulation window numbers."""
+    return classify_modulation_windows(harmony_windows, root, scale_type)[
+        "modulation_windows"
+    ]
+
+
+def summarize_modulation_load(harmony_windows, modulation):
+    """Measure how much confident, repeated key movement a track contains."""
+    confident_windows = [
+        window for window in harmony_windows if not window["ambiguous"]
+    ]
+    confident_duration = sum(
+        max(0.0, window["end"] - window["start"])
+        for window in confident_windows
+    )
+    modulation_duration = 0.0
+    confidence_weighted_duration = 0.0
+
+    for window in confident_windows:
+        if window["window"] not in modulation["modulation_windows"]:
+            continue
+
+        duration = max(0.0, window["end"] - window["start"])
+        confidence = modulation["confidence_by_window"].get(window["window"], 0.0)
+        modulation_duration += duration
+        confidence_weighted_duration += duration * confidence
+
+    duration_ratio = (
+        float(modulation_duration / confident_duration)
+        if confident_duration > 0
+        else 0.0
+    )
+    confidence_weighted_ratio = (
+        float(confidence_weighted_duration / confident_duration)
+        if confident_duration > 0
+        else 0.0
+    )
+    run_count = len(modulation["runs"])
+    run_opportunities = max(len(confident_windows) / 16.0, 1.0)
+    run_density = float(np.clip(run_count / run_opportunities, 0.0, 1.0))
+    mean_run_confidence = (
+        float(np.mean([run["confidence"] for run in modulation["runs"]]))
+        if modulation["runs"]
+        else 0.0
+    )
+    confidence_breadth = float(
+        mean_run_confidence * min(1.0, run_count / 4.0)
+    )
+    modulation_load = float(
+        np.clip(
+            0.45 * run_density
+            + 0.30 * confidence_weighted_ratio
+            + 0.25 * confidence_breadth,
+            0.0,
+            1.0,
+        )
+    )
+
+    return {
+        "modulation_load": modulation_load,
+        "run_count": int(run_count),
+        "run_density": run_density,
+        "duration_ratio": duration_ratio,
+        "confidence_weighted_duration_ratio": confidence_weighted_ratio,
+        "mean_run_confidence": mean_run_confidence,
+        "confidence_breadth": confidence_breadth,
+    }
+
+
+def normalized_harmonic_sigmoid(score):
+    """Map evidence to a perceptual 0-1 scale while preserving both endpoints."""
+    if score is None or not np.isfinite(score):
+        return None
+
+    def logistic(value):
+        return 1.0 / (1.0 + np.exp(-value))
+
+    score = float(np.clip(score, 0.0, 1.0))
+    lower = logistic(-HARMONIC_SIGMOID_CENTER / HARMONIC_SIGMOID_SCALE)
+    upper = logistic(
+        (1.0 - HARMONIC_SIGMOID_CENTER) / HARMONIC_SIGMOID_SCALE
+    )
+    mapped = logistic(
+        (score - HARMONIC_SIGMOID_CENTER) / HARMONIC_SIGMOID_SCALE
+    )
+    return float(np.clip((mapped - lower) / (upper - lower), 0.0, 1.0))
+
+
+def harmonic_evidence_score(
+    diatonic_deviation,
+    harmonic_movement,
+    tonal_stability,
+    voicing_density,
+    modulation_load,
+    harmonic_color,
+):
+    """Combine harmonic evidence before perceptual range calibration."""
+    values = (
+        diatonic_deviation,
+        harmonic_movement,
+        tonal_stability,
+        voicing_density,
+        modulation_load,
+        harmonic_color,
+    )
+
+    if any(value is None or not np.isfinite(value) for value in values):
+        return None
+
+    tonal_instability = 1.0 - float(tonal_stability)
+    return float(
+        np.clip(
+            HARMONIC_COMPLEXITY_WEIGHTS["diatonic_deviation"]
+            * float(diatonic_deviation)
+            + HARMONIC_COMPLEXITY_WEIGHTS["harmonic_movement"]
+            * float(harmonic_movement)
+            + HARMONIC_COMPLEXITY_WEIGHTS["tonal_instability"]
+            * tonal_instability
+            + HARMONIC_COMPLEXITY_WEIGHTS["voicing_density"]
+            * float(voicing_density)
+            + HARMONIC_COMPLEXITY_WEIGHTS["modulation_load"]
+            * float(modulation_load)
+            + HARMONIC_COMPLEXITY_WEIGHTS["harmonic_color"]
+            * float(harmonic_color),
+            0.0,
+            1.0,
+        )
+    )
+
+
+def harmonic_composite_score(
+    diatonic_deviation,
+    harmonic_movement,
+    tonal_stability,
+    voicing_density,
+    modulation_load,
+    harmonic_color,
+):
+    """Return the perceptually calibrated 0-1 harmonic-complexity score."""
+    evidence_score = harmonic_evidence_score(
+        diatonic_deviation,
+        harmonic_movement,
+        tonal_stability,
+        voicing_density,
+        modulation_load,
+        harmonic_color,
+    )
+    return normalized_harmonic_sigmoid(evidence_score)
+
+
+def summarize_tonal_stability(harmony_windows):
+    """Summarize centered duration, longest centered run, and local confidence."""
+    confident_windows = [window for window in harmony_windows if not window["ambiguous"]]
+    total_duration = sum(max(0.0, window["end"] - window["start"]) for window in harmony_windows)
+    confident_duration = sum(
+        max(0.0, window["end"] - window["start"])
+        for window in confident_windows
+    )
+    centered_duration = sum(
+        max(0.0, window["end"] - window["start"])
+        for window in confident_windows
+        if window["tonally_centered"]
+    )
+    longest_centered_run = 0.0
+    current_run = 0.0
+
+    for window in harmony_windows:
+        duration = max(0.0, window["end"] - window["start"])
+        if not window["ambiguous"] and window["tonally_centered"]:
+            current_run += duration
+            longest_centered_run = max(longest_centered_run, current_run)
         else:
-            if run_start is not None and index - run_start >= MIN_MODULATION_WINDOWS:
-                for modulated_index in range(run_start, index):
-                    sustained_window_numbers.add(harmony_windows[modulated_index]["window"])
-            run_start = None
-            run_key = None
+            current_run = 0.0
 
-    if run_start is not None and len(harmony_windows) - run_start >= MIN_MODULATION_WINDOWS:
-        for modulated_index in range(run_start, len(harmony_windows)):
-            sustained_window_numbers.add(harmony_windows[modulated_index]["window"])
+    centered_ratio = (
+        float(centered_duration / confident_duration) if confident_duration > 0 else 0.0
+    )
+    longest_ratio = (
+        float(longest_centered_run / confident_duration) if confident_duration > 0 else 0.0
+    )
+    mean_local_stability = (
+        float(np.mean([window["tonal_stability"] for window in confident_windows]))
+        if confident_windows
+        else None
+    )
+    tonal_stability = (
+        float(0.50 * centered_ratio + 0.30 * longest_ratio + 0.20 * mean_local_stability)
+        if mean_local_stability is not None
+        else None
+    )
 
-    return sustained_window_numbers
+    return {
+        "tonal_stability": tonal_stability,
+        "tonal_instability": (
+            float(1.0 - tonal_stability) if tonal_stability is not None else None
+        ),
+        "centered_duration_ratio": centered_ratio,
+        "longest_centered_run_ratio": longest_ratio,
+        "analyzable_duration_ratio": (
+            float(confident_duration / total_duration) if total_duration > 0 else 0.0
+        ),
+    }
 
 
 def analyze_harmonic_complexity(
@@ -970,12 +1837,7 @@ def analyze_harmonic_complexity(
     harmonic_signal=None,
     detected_key=None,
 ):
-    """Measure non-diatonic harmonic energy in bar-sized beat windows.
-
-    The score is based on how much local chroma energy falls outside the
-    detected or manually selected key/mode. Sustained modulations are softened
-    so they do not read as accidental harmonic messiness.
-    """
+    """Analyze chromaticism, movement, tonal stability, and voicing density."""
     y_harm = (
         harmonic_signal
         if harmonic_signal is not None
@@ -991,37 +1853,73 @@ def analyze_harmonic_complexity(
         ),
     )
     chroma = scipy.ndimage.median_filter(chroma, size=(1, 9))
+    chroma = preprocess_harmonic_chroma(chroma)
     chroma_times = librosa.times_like(chroma, sr=sr)
-    chroma_profile = np.sum(chroma, axis=1)
+    chord_chroma = librosa.feature.chroma_cqt(
+        y=y_harm,
+        sr=sr,
+        bins_per_octave=36,
+        fmin=librosa.note_to_hz(CHORD_CHROMA_FMIN),
+        n_octaves=CHORD_CHROMA_OCTAVES,
+    )
+    chord_chroma = np.minimum(
+        chord_chroma,
+        librosa.decompose.nn_filter(
+            chord_chroma,
+            aggregate=np.median,
+            metric="cosine",
+        ),
+    )
+    chord_chroma = scipy.ndimage.median_filter(chord_chroma, size=(1, 9))
+    chord_chroma = preprocess_harmonic_chroma(chord_chroma)
+    chord_chroma_times = librosa.times_like(chord_chroma, sr=sr)
+    chroma_profile = aggregate_chroma_profile(chroma)
     detected_key = detected_key or detect_key_and_mode(build_key_chroma_profile(y, sr))
     root = root_override or USER_ROOT or detected_key["root"]
     scale_type = scale_override or USER_SCALE_TYPE or detected_key["scale_type"]
     analysis_key_fit = key_fit(chroma_profile, root, scale_type)
-    scale_mask = get_scale_mask(root, scale_type)[:, None]
+    scale_mask = get_scale_mask(root, scale_type)
     windows = beat_windows(beat_times, duration, BEATS_PER_HARMONY_WINDOW)
+    chord_regions = build_chord_regions(
+        chord_chroma,
+        chord_chroma_times,
+        beat_times,
+        duration,
+    )
+    all_transitions = chord_transitions(chord_regions)
+    transition_counts = {
+        transition: all_transitions.count(transition)
+        for transition in set(all_transitions)
+    }
+    global_movement_summary = summarize_harmonic_movement(
+        chord_regions,
+        transition_counts,
+    )
 
     harmony_windows = []
     for window_number, start_time, end_time, label in windows:
-        # Local chroma windows let the UI show where harmonic density changes.
         in_window = (chroma_times >= start_time) & (chroma_times < end_time)
-
-        if not np.any(in_window):
-            continue
-
         local_chroma = chroma[:, in_window]
-        frame_total = np.sum(local_chroma, axis=0)
-        frame_non_diatonic = np.sum(local_chroma * (1 - scale_mask), axis=0)
-        valid_frames = frame_total > 0
-
-        if not np.any(valid_frames):
-            continue
-
-        frame_ratio = frame_non_diatonic[valid_frames] / frame_total[valid_frames]
-        local_profile = np.sum(local_chroma, axis=1)
+        valid_frames = np.sum(local_chroma, axis=0) > 1e-12
+        frame_deviation = (
+            np.sum(local_chroma[:, valid_frames] * (1 - scale_mask[:, None]), axis=0)
+            if np.any(valid_frames)
+            else np.array([])
+        )
+        diatonic_deviation = (
+            float(trimmed_mean(frame_deviation)) if len(frame_deviation) else None
+        )
+        window_duration = max(0.0, end_time - start_time)
+        context_span = HARMONY_KEY_CONTEXT_WINDOWS * window_duration
+        in_key_context = (
+            (chroma_times >= max(0.0, start_time - context_span))
+            & (chroma_times < min(duration, end_time + context_span))
+        )
+        local_profile = aggregate_chroma_profile(chroma[:, in_key_context])
         try:
             local_key = detect_key_and_mode(
                 local_profile,
-                allow_derived_modes=False,
+                allow_derived_modes=True,
             )
         except AnalysisInputError:
             local_key = {
@@ -1032,6 +1930,50 @@ def analyze_harmonic_complexity(
                 "correlation": 0.0,
                 "correlation_margin": 0.0,
             }
+        confidence = key_confidence_metadata(local_key, detected_key)
+        local_regions = [
+            region
+            for region in chord_regions
+            if start_time <= (region["start"] + region["end"]) / 2 < end_time
+        ]
+        movement = summarize_harmonic_movement(local_regions, transition_counts)
+        density = estimate_voicing_density(local_chroma)
+        exact_center = (
+            local_key["root"] == root and local_key["scale_type"] == scale_type
+        )
+        same_tonic = local_key["root"] == root
+        same_family = (
+            harmonic_mode_family(local_key["scale_type"])
+            == harmonic_mode_family(scale_type)
+        )
+        center_factor = (
+            1.0
+            if exact_center
+            else 0.85
+            if same_tonic and same_family
+            else 0.55
+            if same_tonic
+            else 0.0
+        )
+        local_analysis_key_fit = key_fit(local_profile, root, scale_type)
+        tonal_center_threshold = min(0.85, max(0.65, analysis_key_fit * 0.90))
+        tonally_centered = local_analysis_key_fit >= tonal_center_threshold
+        fit_strength = (
+            float(
+                np.clip(
+                    (local_analysis_key_fit - tonal_center_threshold)
+                    / max(1e-12, 1.0 - tonal_center_threshold),
+                    0.0,
+                    1.0,
+                )
+            )
+            if tonally_centered
+            else 0.0
+        )
+        tonal_stability = float(
+            fit_strength
+            * (0.75 + 0.15 * confidence["score"] + 0.10 * center_factor)
+        )
 
         harmony_windows.append(
             {
@@ -1039,44 +1981,254 @@ def analyze_harmonic_complexity(
                 "time_range": label,
                 "start": start_time,
                 "end": end_time,
-                "raw_complexity": float(np.mean(frame_ratio)),
+                "diatonic_deviation": diatonic_deviation,
+                # Temporary compatibility alias for older saved-project consumers.
+                "raw_complexity": diatonic_deviation,
                 "local_root": local_key["root"],
                 "local_scale_type": local_key["scale_type"],
                 "local_key_correlation": local_key["correlation"],
                 "local_key_correlation_margin": local_key["correlation_margin"],
+                "local_key_confidence": confidence,
+                "ambiguous": confidence["ambiguous"],
+                "harmonic_evidence": (
+                    "low-confidence harmonic evidence"
+                    if confidence["ambiguous"]
+                    else "confident harmonic evidence"
+                ),
+                "tonally_centered": tonally_centered,
+                "tonal_center_strength": center_factor,
+                "local_analysis_key_fit": local_analysis_key_fit,
+                "tonal_center_threshold": tonal_center_threshold,
+                "tonal_stability": tonal_stability,
+                "tonal_instability": float(1.0 - tonal_stability),
+                **movement,
+                **density,
             }
         )
 
-    modulation_windows = detect_sustained_modulations(
+    modulation = classify_modulation_windows(
         harmony_windows,
         root,
         scale_type,
     )
+    modulation_summary = summarize_modulation_load(harmony_windows, modulation)
 
     for window in harmony_windows:
-        is_modulation = window["window"] in modulation_windows
+        window_number = window["window"]
+        is_modulation = window_number in modulation["modulation_windows"]
+        is_transition = window_number in modulation["transition_windows"]
+        confidence = modulation["confidence_by_window"].get(window_number, 0.0)
         window["sustained_modulation"] = is_modulation
-        # Modulations are musically meaningful, so reduce their complexity penalty.
-        window["adjusted_complexity"] = (
-            window["raw_complexity"] * 0.45 if is_modulation else window["raw_complexity"]
+        window["modulation_transition"] = is_transition
+        window["modulation_confidence"] = confidence
+        window["modulation_state"] = (
+            "ambiguous"
+            if window["ambiguous"]
+            else "modulation"
+            if is_modulation
+            else "transition"
+            if is_transition
+            else "centered"
         )
+        reduction_strength = confidence * (1.0 if is_modulation else 0.5 if is_transition else 0.0)
+        adjustment = 1.0 - MAX_MODULATION_DEVIATION_REDUCTION * reduction_strength
+        window["modulation_adjustment"] = float(adjustment)
+        window["modulation_load"] = float(
+            confidence
+            * (1.0 if is_modulation else 0.5 if is_transition else 0.0)
+        )
+        window["adjusted_diatonic_deviation"] = (
+            float(window["diatonic_deviation"] * adjustment)
+            if window["diatonic_deviation"] is not None and not window["ambiguous"]
+            else None
+        )
+        window["harmonic_complexity"] = (
+            harmonic_composite_score(
+                window["adjusted_diatonic_deviation"],
+                window["harmonic_movement"],
+                window["tonal_stability"],
+                window["voicing_density"],
+                window["modulation_load"],
+                window["harmonic_color"],
+            )
+            if not window["ambiguous"]
+            else None
+        )
+        window["harmonic_evidence_score"] = (
+            harmonic_evidence_score(
+                window["adjusted_diatonic_deviation"],
+                window["harmonic_movement"],
+                window["tonal_stability"],
+                window["voicing_density"],
+                window["modulation_load"],
+                window["harmonic_color"],
+            )
+            if not window["ambiguous"]
+            else None
+        )
+        # Temporary compatibility alias used by older frontend chart payloads.
+        window["adjusted_complexity"] = window["harmonic_complexity"]
 
-    adjusted_values = [window["adjusted_complexity"] for window in harmony_windows]
-    raw_values = [window["raw_complexity"] for window in harmony_windows]
+    tonal_summary = summarize_tonal_stability(harmony_windows)
+    confident_windows = [window for window in harmony_windows if not window["ambiguous"]]
+    raw_values = [
+        window["diatonic_deviation"]
+        for window in harmony_windows
+        if window["diatonic_deviation"] is not None
+    ]
+    adjusted_values = [
+        window["adjusted_diatonic_deviation"]
+        for window in confident_windows
+        if window["adjusted_diatonic_deviation"] is not None
+    ]
+    movement_values = [window["harmonic_movement"] for window in confident_windows]
+    density_values = [
+        window["voicing_density"]
+        for window in confident_windows
+        if window["voicing_density"] is not None
+    ]
+    diatonic_deviation = float(np.mean(raw_values)) if raw_values else None
+    adjusted_diatonic_deviation = (
+        float(np.mean(adjusted_values)) if adjusted_values else None
+    )
+    mean_window_movement = float(np.mean(movement_values)) if movement_values else None
+    unique_transition_ratio = (
+        float(len(set(all_transitions)) / len(all_transitions))
+        if all_transitions
+        else 0.0
+    )
+    harmonic_movement = (
+        float(0.40 * mean_window_movement + 0.60 * unique_transition_ratio)
+        if mean_window_movement is not None
+        else None
+    )
+    voicing_density = float(np.mean(density_values)) if density_values else None
+    harmonic_color = global_movement_summary["harmonic_color"]
+    modulation_load = modulation_summary["modulation_load"]
+    evidence_score = harmonic_evidence_score(
+        adjusted_diatonic_deviation,
+        harmonic_movement,
+        tonal_summary["tonal_stability"],
+        voicing_density,
+        modulation_load,
+        harmonic_color,
+    )
+    overall_score = harmonic_composite_score(
+        adjusted_diatonic_deviation,
+        harmonic_movement,
+        tonal_summary["tonal_stability"],
+        voicing_density,
+        modulation_load,
+        harmonic_color,
+    )
     high_complexity_windows = [
-        window for window in harmony_windows if window["adjusted_complexity"] > 0.35
+        window
+        for window in harmony_windows
+        if window["harmonic_complexity"] is not None
+        and window["harmonic_complexity"] > HARMONIC_HOTSPOT_THRESHOLD
+    ]
+    ambiguous_count = sum(window["ambiguous"] for window in harmony_windows)
+    weighted_contributions = {
+        "chromaticism": (
+            HARMONIC_COMPLEXITY_WEIGHTS["diatonic_deviation"]
+            * adjusted_diatonic_deviation
+            if adjusted_diatonic_deviation is not None
+            else None
+        ),
+        "harmonic_movement": (
+            HARMONIC_COMPLEXITY_WEIGHTS["harmonic_movement"] * harmonic_movement
+            if harmonic_movement is not None
+            else None
+        ),
+        "tonal_instability": (
+            HARMONIC_COMPLEXITY_WEIGHTS["tonal_instability"]
+            * tonal_summary["tonal_instability"]
+            if tonal_summary["tonal_instability"] is not None
+            else None
+        ),
+        "voicing_density": (
+            HARMONIC_COMPLEXITY_WEIGHTS["voicing_density"] * voicing_density
+            if voicing_density is not None
+            else None
+        ),
+        "modulation_load": (
+            HARMONIC_COMPLEXITY_WEIGHTS["modulation_load"] * modulation_load
+        ),
+        "harmonic_color": (
+            HARMONIC_COMPLEXITY_WEIGHTS["harmonic_color"] * harmonic_color
+        ),
+    }
+    dominant_factors = [
+        name
+        for name, value in sorted(
+            (
+                (name, value)
+                for name, value in weighted_contributions.items()
+                if value is not None
+            ),
+            key=lambda item: item[1],
+            reverse=True,
+        )
     ]
 
     return {
-        "overall_score": float(np.mean(adjusted_values)) if adjusted_values else None,
-        "raw_score": float(np.mean(raw_values)) if raw_values else None,
+        "overall_score": overall_score,
+        "evidence_score": evidence_score,
+        "raw_score": diatonic_deviation,
+        "diatonic_deviation": diatonic_deviation,
+        "adjusted_diatonic_deviation": adjusted_diatonic_deviation,
+        "harmonic_movement": harmonic_movement,
+        "tonal_stability": tonal_summary["tonal_stability"],
+        "tonal_instability": tonal_summary["tonal_instability"],
+        "voicing_density": voicing_density,
+        "modulation_load": modulation_load,
+        "harmonic_color": harmonic_color,
+        "weighted_contributions": weighted_contributions,
+        "dominant_factors": dominant_factors,
+        "weights": dict(HARMONIC_COMPLEXITY_WEIGHTS),
+        "normalization": {
+            "algorithm": "endpoint_normalized_sigmoid_v1",
+            "center": HARMONIC_SIGMOID_CENTER,
+            "scale": HARMONIC_SIGMOID_SCALE,
+        },
         "windows": harmony_windows,
         "high_complexity_windows": high_complexity_windows,
+        "ambiguous_windows": [window for window in harmony_windows if window["ambiguous"]],
         "detected_key": detected_key,
         "analysis_key": {
             "root": root,
             "scale_type": scale_type,
             "fit": analysis_key_fit,
+        },
+        "confidence": {
+            "global_key_correlation": detected_key["correlation"],
+            "global_key_correlation_margin": detected_key["correlation_margin"],
+            "ambiguous_window_count": int(ambiguous_count),
+            "ambiguous_window_ratio": (
+                float(ambiguous_count / len(harmony_windows)) if harmony_windows else 0.0
+            ),
+            **tonal_summary,
+        },
+        "modulation": {
+            "runs": modulation["runs"],
+            "window_count": int(len(modulation["modulation_windows"])),
+            "transition_window_count": int(len(modulation["transition_windows"])),
+            **modulation_summary,
+        },
+        "movement": {
+            "chord_region_count": int(len(chord_regions)),
+            "chord_change_count": int(len(all_transitions)),
+            "mean_window_movement": mean_window_movement,
+            "unique_transition_ratio": unique_transition_ratio,
+            "repeated_transition_ratio": (
+                float(1.0 - unique_transition_ratio) if all_transitions else 0.0
+            ),
+            "harmonic_color": harmonic_color,
+            "mean_quality_color": global_movement_summary["mean_quality_color"],
+            "colored_chord_ratio": global_movement_summary["colored_chord_ratio"],
+            "altered_chord_ratio": global_movement_summary["altered_chord_ratio"],
+            "altered_salience": global_movement_summary["altered_salience"],
+            "chord_quality_counts": global_movement_summary["chord_quality_counts"],
         },
         "polyphony": detect_polyphonic_density(chroma),
     }
@@ -1148,7 +2300,7 @@ def build_prompt(
     )
     harmony_summary = format_window_summary(
         harmony_analysis["windows"],
-        "adjusted_complexity",
+        "harmonic_complexity",
         high_is_notable=True,
     )
     dynamics_summary = format_window_summary(
@@ -1173,6 +2325,24 @@ def build_prompt(
         pitch_warning = (
             "The pYIN evidence has enough effective voiced coverage to discuss cautiously."
         )
+    harmonic_drivers = ", ".join(
+        factor.replace("_", " ")
+        for factor in harmony_analysis["dominant_factors"][:3]
+    ) or "insufficient confident evidence"
+    ambiguity_note = (
+        f"{harmony_analysis['confidence']['ambiguous_window_count']} of "
+        f"{len(harmony_analysis['windows'])} harmonic windows contain low-confidence "
+        "evidence and must not be interpreted as definite complexity."
+    )
+    quality_counts = harmony_analysis["movement"].get("chord_quality_counts", {})
+    quality_summary = ", ".join(
+        f"{quality.replace('_', ' ')}={count}"
+        for quality, count in sorted(
+            quality_counts.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )[:6]
+    ) or "no confident chord-quality evidence"
     extra_prompt_section = (
         f"\nAdditional user request:\n{extra_prompt.strip()}\n"
         if extra_prompt and extra_prompt.strip()
@@ -1199,9 +2369,10 @@ Metrics:
 
 3. Harmonic Complexity (0-1)
 
-* Measures local non-diatonic harmonic energy against the detected key/mode.
-* The calculation uses bar-based windows and reduces the penalty for sustained modulations.
-* Higher values suggest chromaticism, borrowed tones, modulation, or harmonic density.
+* Endpoint-normalized composite of confidence-adjusted diatonic deviation, chord-region movement, tonal instability, voicing density, modulation load, and harmonic color.
+* Confident sustained root or mode changes reduce the chromaticity contribution proportionally while remaining visible as tonal movement.
+* Harmonic color is conservative quality evidence for sevenths, added notes, ninths, diminished sonorities, and altered dominants; it is not guaranteed chord transcription.
+* Ambiguous windows have no composite score and are only low-confidence harmonic evidence.
 
 4. Dynamics Contour (0-1)
 
@@ -1220,6 +2391,9 @@ Guidelines:
 * Acknowledge strengths before discussing weaknesses.
 * If all metrics are strong, focus on refinement rather than criticism.
 * Never frame insufficient or low-reliability pitch evidence as a confident vocal diagnosis.
+* State whether audible harmonic interest is most consistent with chromaticism, modulation, chord movement, chord color/extensions, or dense voicing.
+* Interpret what the harmonic behavior means musically; do not explain feature extraction or confidence math.
+* Never describe an ambiguous harmonic window as a definite chord, modulation, or complexity hotspot.
 * Write in plain text only. Do not use LaTeX, math delimiters, markdown tables, or symbolic equations.
 {extra_prompt_section}
 
@@ -1233,8 +2407,20 @@ Pitch Tracking Source: {pitch_analysis["source"]}
 Pitch Reliability: {pitch_reliability}
 Pitch Voiced Frame Ratio: {format_score(pitch_analysis["voiced_frame_ratio"])}
 Pitch Effective Voiced Ratio: {format_score(pitch_analysis["effective_voiced_ratio"])}
-Adjusted Harmonic Complexity Score: {format_score(harmony_analysis["overall_score"])}
-Raw Harmonic Complexity Score: {format_score(harmony_analysis["raw_score"])}
+Harmonic Complexity Composite: {format_score(harmony_analysis["overall_score"])}
+Pre-Normalization Harmonic Evidence: {format_score(harmony_analysis["evidence_score"])}
+Diatonic Deviation: {format_score(harmony_analysis["diatonic_deviation"])}
+Confidence-Adjusted Diatonic Deviation: {format_score(harmony_analysis["adjusted_diatonic_deviation"])}
+Harmonic Movement: {format_score(harmony_analysis["harmonic_movement"])}
+Tonal Stability: {format_score(harmony_analysis["tonal_stability"])}
+Tonal Instability: {format_score(harmony_analysis["tonal_instability"])}
+Voicing Density: {format_score(harmony_analysis["voicing_density"])}
+Modulation Load: {format_score(harmony_analysis["modulation_load"])}
+Harmonic Color: {format_score(harmony_analysis["harmonic_color"])}
+Confident Chord-Quality Counts: {quality_summary}
+Primary Harmonic Drivers: {harmonic_drivers}
+Detected Modulation Runs: {len(harmony_analysis["modulation"]["runs"])}
+Harmonic Confidence Note: {ambiguity_note}
 Dynamics Contour Score: {format_score(dynamics_analysis["overall_score"])}
 Detected Key/Mode: {analysis_key["root"]} {analysis_key["scale_type"]} (fit={analysis_key["fit"]:.3f})
 Pitch Evidence Note: {pitch_warning}
@@ -1245,7 +2431,7 @@ Least stable tempo windows:
 Weakest pitch windows:
 {pitch_summary}
 
-Most complex harmony windows:
+Most complex confident harmony windows:
 {harmony_summary}
 
 Least controlled dynamics windows:
@@ -1290,6 +2476,45 @@ def build_chart_points(windows, score_key):
                 "start": float(start) if start is not None else None,
                 "end": float(end) if end is not None else None,
                 "label": window["time_range"],
+            }
+        )
+
+    return points
+
+
+def build_harmonic_chart_points(windows):
+    """Include composite components and ambiguous regions in the harmony lane."""
+    points = []
+
+    for window in windows:
+        components = {
+            "diatonic_deviation": window.get("diatonic_deviation"),
+            "harmonic_movement": window.get("harmonic_movement"),
+            "tonal_instability": window.get("tonal_instability"),
+            "voicing_density": window.get("voicing_density"),
+            "modulation_load": window.get("modulation_load"),
+            "harmonic_color": window.get("harmonic_color"),
+        }
+        tooltip = (
+            "Low-confidence harmonic evidence"
+            if window.get("ambiguous")
+            else " · ".join(
+                f"{name.replace('_', ' ')} {format_score(value)}"
+                for name, value in components.items()
+            )
+        )
+        points.append(
+            {
+                "x": float(window["start"]),
+                "y": window.get("harmonic_complexity"),
+                "start": float(window["start"]),
+                "end": float(window["end"]),
+                "label": window["time_range"],
+                "ambiguous": bool(window.get("ambiguous")),
+                "evidence_label": window.get("harmonic_evidence"),
+                "modulation_state": window.get("modulation_state"),
+                "components": components,
+                "tooltip": tooltip,
             }
         )
 
@@ -1405,10 +2630,9 @@ def build_topline_summary(
     harmony_analysis,
     dynamics_analysis,
 ):
-    """Choose a short summary based on whichever metric is weakest."""
+    """Choose a performance weakness or a genuinely notable harmony result."""
     scores = {
         "tempo": tempo_analysis["overall_score"],
-        "harmony": harmony_analysis["overall_score"],
         "dynamics": dynamics_analysis["overall_score"],
     }
 
@@ -1421,6 +2645,13 @@ def build_topline_summary(
         return "The recording did not provide enough reliable metric evidence for a topline diagnosis."
 
     weakest_metric = min(scores, key=scores.get)
+    harmony_score = harmony_analysis.get("overall_score")
+    if (
+        harmony_score is not None
+        and harmony_score >= HARMONIC_HOTSPOT_THRESHOLD
+        and scores[weakest_metric] >= 0.70
+    ):
+        weakest_metric = "harmony"
 
     if weakest_metric == "tempo":
         return "Timing consistency is the main area to inspect; use the tempo window map to locate unstable sections."
@@ -1429,7 +2660,11 @@ def build_topline_summary(
         return "Pitch accuracy is the main diagnostic focus, especially in the lowest-scoring phrase windows."
 
     if weakest_metric == "harmony":
-        return "Harmonic movement is the densest signal; compare the complexity map with the detected key and local modulation windows."
+        driver = harmony_analysis.get("dominant_factors", ["harmonic evidence"])[0]
+        return (
+            f"The harmonic composite is led by {driver.replace('_', ' ')}; compare "
+            "its component panel with confident local windows and modulation boundaries."
+        )
 
     return "Dynamics contour is the main area to inspect; look for windows where RMS energy does not follow a steady line, fade, or smooth ramp."
 
@@ -1655,7 +2890,15 @@ def run_interlude_analysis(
             "tempo_stability": tempo_analysis["overall_score"],
             "pitch_accuracy": pitch_analysis["overall_score"],
             "harmonic_complexity": harmony_analysis["overall_score"],
+            "harmonic_evidence_score": harmony_analysis["evidence_score"],
             "raw_harmonic_complexity": harmony_analysis["raw_score"],
+            "diatonic_deviation": harmony_analysis["diatonic_deviation"],
+            "harmonic_movement": harmony_analysis["harmonic_movement"],
+            "tonal_stability": harmony_analysis["tonal_stability"],
+            "tonal_instability": harmony_analysis["tonal_instability"],
+            "voicing_density": harmony_analysis["voicing_density"],
+            "modulation_load": harmony_analysis["modulation_load"],
+            "harmonic_color": harmony_analysis["harmonic_color"],
             "dynamics_variation": dynamics_analysis["overall_score"],
         },
         "key": {
@@ -1691,13 +2934,56 @@ def run_interlude_analysis(
             "mean_abs_cents_error": pitch_analysis["mean_abs_cents_error"],
             "polyphony_limited": pitch_analysis["polyphony_limited"],
         },
+        "harmonic_analysis": {
+            "components": {
+                "diatonic_deviation": harmony_analysis["diatonic_deviation"],
+                "adjusted_diatonic_deviation": harmony_analysis[
+                    "adjusted_diatonic_deviation"
+                ],
+                "harmonic_movement": harmony_analysis["harmonic_movement"],
+                "tonal_stability": harmony_analysis["tonal_stability"],
+                "tonal_instability": harmony_analysis["tonal_instability"],
+                "voicing_density": harmony_analysis["voicing_density"],
+                "modulation_load": harmony_analysis["modulation_load"],
+                "harmonic_color": harmony_analysis["harmonic_color"],
+            },
+            "evidence_score": harmony_analysis["evidence_score"],
+            "normalization": harmony_analysis["normalization"],
+            "weights": harmony_analysis["weights"],
+            "weighted_contributions": harmony_analysis["weighted_contributions"],
+            "dominant_factors": harmony_analysis["dominant_factors"],
+            "confidence": harmony_analysis["confidence"],
+            "modulation": harmony_analysis["modulation"],
+            "movement": harmony_analysis["movement"],
+        },
         "polyphony": harmony_analysis["polyphony"],
         "charts": {
             "tempo": build_chart_points(tempo_analysis["windows"], "score"),
             "pitch": build_chart_points(pitch_analysis["windows"], "score"),
-            "harmony": build_chart_points(
+            "harmony": build_harmonic_chart_points(harmony_analysis["windows"]),
+            "diatonic_deviation": build_chart_points(
                 harmony_analysis["windows"],
-                "adjusted_complexity",
+                "diatonic_deviation",
+            ),
+            "harmonic_movement": build_chart_points(
+                harmony_analysis["windows"],
+                "harmonic_movement",
+            ),
+            "tonal_stability": build_chart_points(
+                harmony_analysis["windows"],
+                "tonal_stability",
+            ),
+            "voicing_density": build_chart_points(
+                harmony_analysis["windows"],
+                "voicing_density",
+            ),
+            "modulation_load": build_chart_points(
+                harmony_analysis["windows"],
+                "modulation_load",
+            ),
+            "harmonic_color": build_chart_points(
+                harmony_analysis["windows"],
+                "harmonic_color",
             ),
             "dynamics": build_chart_points(dynamics_analysis["windows"], "score"),
         },

@@ -1,8 +1,10 @@
+import { useRef } from "react";
 import AnalysisNoteInput from "./AnalysisNoteInput";
 import BrandMasthead from "./BrandMasthead";
 import ResumeProjects from "./ResumeProjects";
 import RootModeControl from "./RootModeControl";
 import UploadInstrument from "./UploadInstrument";
+import { gsap, useGSAP } from "../../lib/motion";
 
 export default function UploadPage({
   options,
@@ -24,15 +26,28 @@ export default function UploadPage({
   onOpenProjects,
   onSelectProject,
 }) {
+  const intakeRef = useRef(null);
   const vocalCapability = options?.capabilities?.vocal_separation;
   const vocalSeparationAvailable = Boolean(vocalCapability?.available);
 
+  useGSAP(() => {
+    const media = gsap.matchMedia();
+    media.add("(prefers-reduced-motion: no-preference)", () => {
+      const timeline = gsap.timeline({ defaults: { ease: "power3.out" } });
+      timeline
+        .from("[data-intake-masthead]", { y: -14, opacity: 0, duration: 0.4 })
+        .from("[data-upload-instrument]", { y: 20, opacity: 0, duration: 0.58 }, "-=0.18")
+        .from("[data-intake-controls]", { x: 20, opacity: 0, duration: 0.5 }, "-=0.38");
+    });
+    return () => media.revert();
+  }, { scope: intakeRef });
+
   return (
-    <main className="min-h-screen overflow-hidden bg-canvas text-ink">
-      <div className="mx-auto grid min-h-screen max-w-[1540px] grid-rows-[auto_1fr] px-6 py-5">
+    <main ref={intakeRef} className="interlude-page-field min-h-screen bg-canvas text-ink">
+      <div className="mx-auto grid min-h-screen max-w-[1640px] grid-rows-[auto_1fr] px-5 py-4 max-sm:px-0 max-sm:py-0">
         <BrandMasthead onOpenProjects={onOpenProjects} />
 
-        <section className="grid min-h-0 grid-cols-[minmax(0,1fr)_410px] gap-5 py-5 max-xl:grid-cols-1">
+        <section className="intake-instrument grid min-h-0 grid-cols-[minmax(0,1fr)_390px] overflow-hidden bg-paper shadow-panel max-xl:grid-cols-1">
           <UploadInstrument
             selectedFile={selectedFile}
             setSelectedFile={setSelectedFile}
@@ -40,8 +55,8 @@ export default function UploadPage({
             status={status}
           />
 
-          <aside className="grid content-start gap-4">
-            <div className="workstation-region angled-cut overflow-hidden">
+          <aside data-intake-controls className="intake-configuration-rail border-l border-rule-strong bg-paper max-xl:border-l-0 max-xl:border-t">
+            <div className="overflow-hidden">
               <RootModeControl
                 options={options}
                 autoKey={autoKey}

@@ -36,12 +36,31 @@ export function formatDate(value) {
 export function normalizeDiagnosticText(value) {
   if (!value) return "";
 
-  return String(value)
+  let text = value;
+
+  if (typeof text === "object") {
+    text = text.response || text.output_text || JSON.stringify(text);
+  }
+
+  if (typeof text === "string" && text.trim().startsWith("{")) {
+    try {
+      const parsed = JSON.parse(text);
+      text = parsed?.response || parsed?.output_text || text;
+    } catch {
+      // Older local projects may contain plain prose that begins with a brace.
+    }
+  }
+
+  return String(text)
+    .replace(/\\n/g, "\n")
     .replace(/\\\((.*?)\\\)/gs, "$1")
     .replace(/\\\[(.*?)\\\]/gs, "$1")
     .replace(/\$\$([^$]+)\$\$/gs, "$1")
     .replace(/\$([^$]+)\$/g, "$1")
     .replace(/\\(?:text|mathrm|mathbf|emph)\{([^{}]*)\}/g, "$1")
     .replace(/\\times/g, "x")
-    .replace(/\\%/g, "%");
+    .replace(/\\%/g, "%")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/^\*\s+/gm, "• ")
+    .replace(/\*([^*]+)\*/g, "$1");
 }

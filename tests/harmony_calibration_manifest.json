@@ -1,0 +1,39 @@
+{
+  "recordings": [
+    {
+      "id": "diatonic_pop_loop",
+      "filename": "Billie Jean (Long Version) - Michael Jackson (128k).wav",
+      "categories": ["diatonic pop", "repeated chord movement"],
+      "human_judgment": "Stable minor-key center, persistent repeating groove, low transition novelty, moderate arrangement density.",
+      "expectations": {"maximum_harmonic_complexity": 0.40}
+    },
+    {
+      "id": "jazz_pop_changes",
+      "filename": "Sergio Mendes - Never Gonna Let You Go (128k).wav",
+      "categories": ["jazz harmony", "borrowed chords", "clear modulations"],
+      "human_judgment": "Frequent functional chord movement and tonicization should exceed the repeated pop-loop movement score.",
+      "expectations": {"minimum_harmonic_complexity": 0.70, "minimum_modulation_load": 0.50}
+    },
+    {
+      "id": "modal_repeated_loop",
+      "filename": "Gorillaz - Feel Good Inc..wav",
+      "categories": ["modal music", "repeated chord movement"],
+      "human_judgment": "A persistent modal loop should show repetition and tonal centering without being treated as repeated modulation.",
+      "expectations": {"maximum_harmonic_complexity": 0.55, "maximum_modulation_load": 0.05}
+    },
+    {
+      "id": "sampled_borrowed_harmony",
+      "filename": "aruarian dance - Nujabes (128k).wav",
+      "categories": ["borrowed chords", "jazz harmony", "looped progression"],
+      "human_judgment": "Color tones and sampled jazz voicings should raise deviation and density while repeated movement limits novelty.",
+      "expectations": {"minimum_harmonic_complexity": 0.45, "minimum_harmonic_color": 0.30}
+    },
+    {
+      "id": "dense_jazz_fusion",
+      "filename": "Takarajima - T - SQUARE.wav",
+      "categories": ["jazz harmony", "dense electronic arrangements", "clear modulations"],
+      "human_judgment": "Dense voicings and active harmonic rhythm should rank above the diatonic pop fixture without relying on chromaticity alone.",
+      "expectations": {"minimum_harmonic_complexity": 0.58, "minimum_harmonic_movement": 0.45}
+    }
+  ]
+}

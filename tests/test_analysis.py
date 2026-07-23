@@ -92,26 +92,41 @@ class KeyDetectionTests(unittest.TestCase):
         self.assertEqual(result["analysis_key"]["root"], "D")
         self.assertEqual(result["analysis_key"]["scale_type"], "harmonic_minor")
         self.assertEqual(result["detected_key"], detected)
+        self.assertEqual(result["raw_score"], result["diatonic_deviation"])
+        self.assertEqual(
+            result["windows"][0]["raw_complexity"],
+            result["windows"][0]["diatonic_deviation"],
+        )
+        self.assertEqual(
+            result["windows"][0]["adjusted_complexity"],
+            result["windows"][0]["harmonic_complexity"],
+        )
 
     def test_modulation_requires_confidence_and_two_consecutive_windows(self):
         windows = [
             {
                 "window": 1,
                 "local_root": "G",
+                "local_scale_type": "major",
                 "local_key_correlation": 0.75,
                 "local_key_correlation_margin": 0.20,
+                "ambiguous": False,
             },
             {
                 "window": 2,
                 "local_root": "G",
+                "local_scale_type": "major",
                 "local_key_correlation": 0.76,
                 "local_key_correlation_margin": 0.21,
+                "ambiguous": False,
             },
             {
                 "window": 3,
                 "local_root": "D",
+                "local_scale_type": "minor",
                 "local_key_correlation": 0.59,
                 "local_key_correlation_margin": 0.30,
+                "ambiguous": False,
             },
         ]
         self.assertEqual(
@@ -127,6 +142,274 @@ class KeyDetectionTests(unittest.TestCase):
         nearly_flat = np.ones(12) + np.linspace(0.0, 0.01, 12)
         with self.assertRaises(Interlude.AnalysisInputError):
             Interlude.detect_key_and_mode(nearly_flat)
+
+
+class HarmonicComplexityTests(unittest.TestCase):
+    @staticmethod
+    def chord_region(label, start):
+        root, quality = label.split(":", 1)
+        return {
+            "start": float(start),
+            "end": float(start + 1),
+            "label": label,
+            "root": root,
+            "quality": quality,
+            "similarity": 0.9,
+            "margin": 0.1,
+            "ambiguous": False,
+            "smoothed": False,
+        }
+
+    def test_sustain_weighting_and_trim_reduce_isolated_chromatic_frame(self):
+        chroma = np.zeros((12, 40))
+        chroma[[0, 4, 7], :] = 1.0
+        chroma[6, 20] = 4.0
+        raw_normalized = chroma / np.sum(chroma, axis=0, keepdims=True)
+        processed = Interlude.preprocess_harmonic_chroma(chroma)
+        raw_deviation = float(np.mean(raw_normalized[6]))
+        robust_deviation = float(Interlude.trimmed_mean(processed[6]))
+        self.assertLess(robust_deviation, raw_deviation * 0.25)
+
+    def test_repeated_and_novel_chord_movement_are_distinct(self):
+        repeated_labels = ["C:major", "G:major", "C:major", "G:major", "C:major"]
+        novel_labels = ["C:major", "D:minor", "E:minor", "F:major", "G:major"]
+        repeated = [self.chord_region(label, index) for index, label in enumerate(repeated_labels)]
+        novel = [self.chord_region(label, index) for index, label in enumerate(novel_labels)]
+        repeated_transitions = Interlude.chord_transitions(repeated)
+        novel_transitions = Interlude.chord_transitions(novel)
+        repeated_counts = {
+            transition: repeated_transitions.count(transition)
+            for transition in set(repeated_transitions)
+        }
+        novel_counts = {
+            transition: novel_transitions.count(transition)
+            for transition in set(novel_transitions)
+        }
+        repeated_result = Interlude.summarize_harmonic_movement(repeated, repeated_counts)
+        novel_result = Interlude.summarize_harmonic_movement(novel, novel_counts)
+        self.assertEqual(repeated_result["repeated_transition_ratio"], 1.0)
+        self.assertEqual(novel_result["novel_transition_ratio"], 1.0)
+        self.assertGreater(
+            novel_result["harmonic_movement"],
+            repeated_result["harmonic_movement"],
+        )
+
+    def test_extensions_do_not_create_false_root_movement(self):
+        regions = []
+        for index, quality in enumerate(("major", "major7", "dominant9")):
+            region = self.chord_region(f"C:{quality}", index)
+            region["movement_label"] = "C:major"
+            regions.append(region)
+
+        self.assertEqual(Interlude.chord_transitions(regions), [])
+
+    def test_dense_voicing_is_separate_from_diatonic_deviation(self):
+        triad = np.zeros((12, 24))
+        triad[[0, 4, 7], :] = 1.0
+        dense = np.zeros((12, 24))
+        dense[[0, 2, 4, 5, 7, 9, 11], :] = 1.0
+        triad_density = Interlude.estimate_voicing_density(
+            Interlude.preprocess_harmonic_chroma(triad)
+        )
+        dense_density = Interlude.estimate_voicing_density(
+            Interlude.preprocess_harmonic_chroma(dense)
+        )
+        self.assertGreater(
+            dense_density["voicing_density"],
+            triad_density["voicing_density"],
+        )
+        self.assertGreater(
+            dense_density["estimated_active_pitch_classes"],
+            triad_density["estimated_active_pitch_classes"],
+        )
+
+    def test_composite_uses_documented_weights(self):
+        evidence = Interlude.harmonic_evidence_score(
+            0.2,
+            0.4,
+            0.75,
+            0.5,
+            0.6,
+            0.7,
+        )
+        score = Interlude.harmonic_composite_score(
+            0.2,
+            0.4,
+            0.75,
+            0.5,
+            0.6,
+            0.7,
+        )
+        self.assertAlmostEqual(evidence, 0.5045)
+        self.assertAlmostEqual(score, Interlude.normalized_harmonic_sigmoid(evidence))
+
+    def test_sigmoid_preserves_endpoints_and_expands_midrange(self):
+        self.assertAlmostEqual(Interlude.normalized_harmonic_sigmoid(0.0), 0.0)
+        self.assertAlmostEqual(Interlude.normalized_harmonic_sigmoid(1.0), 1.0)
+        self.assertGreater(Interlude.normalized_harmonic_sigmoid(0.4), 0.6)
+
+    def test_extended_and_altered_chords_have_more_color_than_triads(self):
+        results = {}
+        for quality in ("major", "major7", "dominant_b9"):
+            profile = np.zeros(12)
+            for interval, weight in Interlude.CHORD_QUALITIES[quality]["intervals"]:
+                profile[interval] = weight
+            results[quality] = Interlude.estimate_chord_region(profile)
+
+        self.assertEqual(results["major"]["label"], "C:major")
+        self.assertEqual(results["major7"]["label"], "C:major7")
+        self.assertEqual(results["dominant_b9"]["label"], "C:dominant_b9")
+        self.assertLess(
+            results["major"]["color_evidence"],
+            results["major7"]["color_evidence"],
+        )
+        self.assertLess(
+            results["major7"]["color_evidence"],
+            results["dominant_b9"]["color_evidence"],
+        )
+
+    def test_altered_chord_salience_exceeds_common_seventh_color(self):
+        major7 = self.chord_region("C:major7", 0)
+        major7.update(
+            color_complexity=0.44,
+            color_evidence=0.44,
+            quality_confidence=1.0,
+        )
+        altered = self.chord_region("C:dominant_b9", 0)
+        altered.update(
+            color_complexity=0.92,
+            color_evidence=0.92,
+            quality_confidence=1.0,
+        )
+
+        common = Interlude.summarize_harmonic_movement([major7], {})
+        altered_result = Interlude.summarize_harmonic_movement([altered], {})
+
+        self.assertGreater(
+            altered_result["harmonic_color"],
+            common["harmonic_color"],
+        )
+
+    def test_modulation_load_rewards_repeated_confident_runs(self):
+        windows = [
+            {
+                "window": number,
+                "start": float(number - 1),
+                "end": float(number),
+                "ambiguous": False,
+            }
+            for number in range(1, 33)
+        ]
+        one_run = {
+            "modulation_windows": {1, 2},
+            "confidence_by_window": {1: 0.8, 2: 0.8},
+            "runs": [{"confidence": 0.8}],
+        }
+        four_runs = {
+            "modulation_windows": set(range(1, 9)),
+            "confidence_by_window": {number: 0.8 for number in range(1, 9)},
+            "runs": [{"confidence": 0.8} for _ in range(4)],
+        }
+
+        sparse = Interlude.summarize_modulation_load(windows, one_run)
+        frequent = Interlude.summarize_modulation_load(windows, four_runs)
+
+        self.assertGreater(frequent["modulation_load"], sparse["modulation_load"])
+        self.assertGreater(frequent["run_density"], sparse["run_density"])
+
+    def test_low_key_confidence_is_ambiguous(self):
+        local = {"correlation": 0.50, "correlation_margin": 0.01}
+        global_key = {"correlation": 0.80, "correlation_margin": 0.20}
+        confidence = Interlude.key_confidence_metadata(local, global_key)
+        self.assertTrue(confidence["ambiguous"])
+        self.assertEqual(confidence["level"], "low")
+
+    def test_mode_change_can_form_a_modulation_run_with_transition_windows(self):
+        windows = []
+        for number, mode in enumerate(("major", "minor", "minor", "major"), start=1):
+            windows.append(
+                {
+                    "window": number,
+                    "local_root": "C",
+                    "local_scale_type": mode,
+                    "local_key_correlation": 0.82,
+                    "local_key_correlation_margin": 0.18,
+                    "ambiguous": False,
+                }
+            )
+        result = Interlude.classify_modulation_windows(windows, "C", "major")
+        self.assertEqual(result["modulation_windows"], {2, 3})
+        self.assertEqual(result["transition_windows"], {1, 2, 3, 4})
+        self.assertEqual(result["runs"][0]["scale_type"], "minor")
+        self.assertEqual(result["runs"][0]["noncentered_window_ratio"], 1.0)
+
+    def test_in_key_tonicization_is_not_labeled_as_modulation(self):
+        windows = [
+            {
+                "window": number,
+                "local_root": "G",
+                "local_scale_type": "major",
+                "local_key_correlation": 0.9,
+                "local_key_correlation_margin": 0.25,
+                "ambiguous": False,
+                "tonally_centered": True,
+            }
+            for number in range(1, 9)
+        ]
+
+        result = Interlude.classify_modulation_windows(windows, "C", "major")
+
+        self.assertEqual(result["modulation_windows"], set())
+        self.assertEqual(result["runs"], [])
+
+    def test_tonal_stability_rewards_centered_duration_and_long_runs(self):
+        centered = [
+            {
+                "start": float(index),
+                "end": float(index + 1),
+                "ambiguous": False,
+                "tonally_centered": True,
+                "tonal_stability": 0.8,
+            }
+            for index in range(4)
+        ]
+        interrupted = [dict(window) for window in centered]
+        for index in (1, 3):
+            interrupted[index]["tonally_centered"] = False
+            interrupted[index]["tonal_stability"] = 0.0
+
+        centered_result = Interlude.summarize_tonal_stability(centered)
+        interrupted_result = Interlude.summarize_tonal_stability(interrupted)
+
+        self.assertGreater(
+            centered_result["tonal_stability"],
+            interrupted_result["tonal_stability"],
+        )
+        self.assertEqual(centered_result["longest_centered_run_ratio"], 1.0)
+        self.assertEqual(interrupted_result["longest_centered_run_ratio"], 0.25)
+
+    def test_ambiguous_harmony_chart_points_have_no_complexity_value(self):
+        windows = [
+            {
+                "start": 0.0,
+                "end": 2.0,
+                "time_range": "0.00-2.00s",
+                "harmonic_complexity": None,
+                "diatonic_deviation": 0.4,
+                "harmonic_movement": 0.2,
+                "tonal_instability": 0.5,
+                "voicing_density": 0.3,
+                "ambiguous": True,
+                "harmonic_evidence": "low-confidence harmonic evidence",
+                "modulation_state": "ambiguous",
+            }
+        ]
+
+        point = Interlude.build_harmonic_chart_points(windows)[0]
+
+        self.assertIsNone(point["y"])
+        self.assertTrue(point["ambiguous"])
+        self.assertEqual(point["tooltip"], "Low-confidence harmonic evidence")
 
 
 class TempoStabilityTests(unittest.TestCase):
@@ -230,7 +513,7 @@ class PitchTrackingTests(unittest.TestCase):
             {"overall_score": 0.7},
             {"overall_score": 0.9},
         )
-        self.assertIn("Harmonic", summary)
+        self.assertIn("harmonic", summary.lower())
 
 
 class VocalSeparationTests(unittest.TestCase):
@@ -341,6 +624,55 @@ class ApiContractTests(unittest.TestCase):
 
             self.assertEqual(raised.exception.status_code, 503)
             self.assertFalse(upload.exists())
+
+        self.assertEqual(set(api.PROJECTS), before)
+
+    def test_successful_analysis_retains_project_audio_and_delete_cleans_it(self):
+        before = set(api.PROJECTS)
+        request = api.AnalyzeRequest(filename="source.wav", file_data="AA==")
+        result = {
+            "project": {
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "duration": 1.0,
+                "sample_rate": 22050,
+                "bpm": 120.0,
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            upload = temp_path / "upload.wav"
+            media_dir = temp_path / "media"
+            media_dir.mkdir()
+
+            with mock.patch.object(api, "safe_upload_path", return_value=upload), mock.patch.object(
+                api,
+                "decode_file",
+                return_value=b"audio bytes",
+            ), mock.patch.object(
+                api,
+                "run_in_threadpool",
+                new=mock.AsyncMock(return_value=result),
+            ), mock.patch.object(
+                api,
+                "MEDIA_DIR",
+                media_dir,
+            ), mock.patch.object(
+                api,
+                "save_projects",
+            ):
+                response = asyncio.run(api.analyze(request))
+                project_id = response["project"]["id"]
+                audio_url = response["project"]["audio_url"]
+                media_path = media_dir / Path(audio_url).name
+
+                self.assertTrue(media_path.exists())
+                self.assertFalse(upload.exists())
+                self.assertEqual(media_path.read_bytes(), b"audio bytes")
+
+                asyncio.run(api.delete_project(project_id))
+                self.assertFalse(media_path.exists())
+                self.assertNotIn(project_id, api.PROJECTS)
 
         self.assertEqual(set(api.PROJECTS), before)
 

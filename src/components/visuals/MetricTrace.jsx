@@ -1,6 +1,6 @@
 import { formatScore } from "../../lib/format";
 
-export default function MetricTrace({ title, points, color = "#1F5EFF", inverse = false }) {
+export default function MetricTrace({ title, points, color = "#00A887", inverse = false }) {
   const data = points?.length ? points : [];
   const gradientId = `metric-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   const width = 560;
@@ -43,7 +43,7 @@ export default function MetricTrace({ title, points, color = "#1F5EFF", inverse 
         </defs>
         {[0, 0.25, 0.5, 0.75, 1].map((value) => (
           <g key={value}>
-            <line x1={pad.left} x2={width - pad.right} y1={yFor(value)} y2={yFor(value)} stroke="#D5D8DE" />
+            <line x1={pad.left} x2={width - pad.right} y1={yFor(value)} y2={yFor(value)} stroke="#D8D1C5" />
             <text x="4" y={yFor(value) + 3} className="fill-muted font-mono text-[9px]">
               {value.toFixed(2)}
             </text>
@@ -58,7 +58,7 @@ export default function MetricTrace({ title, points, color = "#1F5EFF", inverse 
             cy={yFor(point.y)}
             r={point === notable ? 5 : 2.6}
             fill={point === notable ? "#111418" : color}
-            stroke="#FBF8F0"
+            stroke="#FFFDF8"
             strokeWidth="1.5"
           />
         ))}

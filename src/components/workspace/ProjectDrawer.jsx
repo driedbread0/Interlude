@@ -1,7 +1,8 @@
 import { Check, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { formatDate, formatDuration, formatScore, titleCase } from "../../lib/format";
 import WaveformCanvas from "../visuals/WaveformCanvas";
+import { gsap, useGSAP } from "../../lib/motion";
 
 function ScorePreview({ label, value, color }) {
   const normalized = Math.max(0, Math.min(1, Number(value) || 0));
@@ -22,8 +23,21 @@ function ScorePreview({ label, value, color }) {
 export default function ProjectDrawer({ open, projects, onClose, onDeleteProject, onSelectProject }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const drawerRef = useRef(null);
+  const panelRef = useRef(null);
 
-  if (!open) return null;
+  useGSAP(() => {
+    if (!drawerRef.current || !panelRef.current) return;
+
+    if (open) {
+      gsap.set(drawerRef.current, { autoAlpha: 1 });
+      gsap.fromTo(drawerRef.current, { backgroundColor: "rgba(17,20,24,0)" }, { backgroundColor: "rgba(17,20,24,0.32)", duration: 0.28 });
+      gsap.fromTo(panelRef.current, { xPercent: 100 }, { xPercent: 0, duration: 0.46, ease: "power3.out" });
+    } else {
+      gsap.to(panelRef.current, { xPercent: 100, duration: 0.32, ease: "power2.in" });
+      gsap.to(drawerRef.current, { autoAlpha: 0, duration: 0.32 });
+    }
+  }, { dependencies: [open], scope: drawerRef });
 
   async function confirmDelete(projectId) {
     setDeletingId(projectId);
@@ -37,9 +51,15 @@ export default function ProjectDrawer({ open, projects, onClose, onDeleteProject
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-ink/20 backdrop-blur-[2px]" onClick={onClose}>
+    <div
+      ref={drawerRef}
+      aria-hidden={!open}
+      className={`fixed inset-0 z-50 invisible ${open ? "pointer-events-auto" : "pointer-events-none"}`}
+      onClick={onClose}
+    >
       <aside
-        className="absolute right-0 top-0 h-full w-full max-w-[620px] border-l border-rule-strong bg-paper shadow-panel"
+        ref={panelRef}
+        className="project-drawer-panel absolute right-0 top-0 h-full w-full max-w-[620px] bg-paper shadow-panel"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-rule bg-porcelain p-5">
@@ -52,9 +72,9 @@ export default function ProjectDrawer({ open, projects, onClose, onDeleteProject
           </button>
         </div>
 
-        <div className="space-y-4 overflow-auto p-5">
+        <div className="h-[calc(100%-85px)] divide-y divide-rule overflow-auto">
           {!projects?.length && (
-            <p className="annotation-panel p-4 text-sm leading-6 text-ink-soft">
+            <p className="p-5 text-sm leading-6 text-ink-soft">
               No projects have been analyzed in this local session yet.
             </p>
           )}
@@ -65,7 +85,7 @@ export default function ProjectDrawer({ open, projects, onClose, onDeleteProject
             return (
             <article
               key={project.id}
-              className="group border border-rule bg-porcelain transition duration-150 ease-instrument hover:-translate-y-0.5 hover:border-cobalt hover:bg-[rgba(31,94,255,0.06)] hover:shadow-panel"
+              className="group bg-porcelain transition duration-150 ease-instrument hover:bg-[rgba(31,94,255,0.06)]"
             >
               <div className="grid grid-cols-[1fr_150px] gap-0 max-sm:grid-cols-1">
                 <button
@@ -91,14 +111,17 @@ export default function ProjectDrawer({ open, projects, onClose, onDeleteProject
                   <div className="mb-4 text-right max-sm:text-left">
                     <p className="rule-label">Key state</p>
                     <p className="font-display text-base font-bold">
-                      {project.key.root} {titleCase(project.key.scale_type)}
+                      {project.key?.root || "—"} {titleCase(project.key?.scale_type)}
                     </p>
-                    <p className="font-mono text-[10px] text-muted">{project.key.mode}</p>
+                    <p className="font-mono text-[10px] text-muted">{project.key?.mode || "saved analysis"}</p>
+                    <p className="mt-1 font-mono text-[8px] uppercase text-teal-deep">
+                      corr. {formatScore(project.key?.detection?.correlation)}
+                    </p>
                   </div>
                   <div className="space-y-2">
-                    <ScorePreview label="tempo" value={project.scores.tempo_stability} color="#1F5EFF" />
-                    <ScorePreview label="pitch" value={project.scores.pitch_accuracy} color="#00A887" />
-                    <ScorePreview label="harm" value={project.scores.harmonic_complexity} color="#6E3FF2" />
+                    <ScorePreview label="tempo" value={project.scores?.tempo_stability} color="#00A887" />
+                    <ScorePreview label="pitch" value={project.scores?.pitch_accuracy} color="#006C5A" />
+                    <ScorePreview label="harm" value={project.scores?.harmonic_complexity} color="#6E3FF2" />
                   </div>
                   <div className="mt-4 border-t border-rule pt-3">
                     {confirming ? (

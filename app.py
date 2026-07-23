@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import re
+import shutil
 import uuid
 from pathlib import Path
 
@@ -20,6 +21,8 @@ STATIC_DIR = BASE_DIR / "static"
 DIST_DIR = BASE_DIR / "dist"
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+MEDIA_DIR = BASE_DIR / "media"
+MEDIA_DIR.mkdir(exist_ok=True)
 PROJECT_STORE_PATH = Path(
     os.getenv("INTERLUDE_PROJECT_STORE", Path.home() / ".interlude" / "projects.json")
 )
@@ -78,6 +81,8 @@ app.add_middleware(
 )
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 
 if (DIST_DIR / "assets").exists():
     app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets"), name="assets")
@@ -183,6 +188,8 @@ async def analyze(request: AnalyzeRequest):
     upload_path = safe_upload_path(request.filename)
     upload_path.write_bytes(decode_file(request.file_data))
 
+    media_path = None
+
     try:
         try:
             result = await run_in_threadpool(
@@ -197,18 +204,28 @@ async def analyze(request: AnalyzeRequest):
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Interlude.VocalSeparationError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+        project_id = uuid.uuid4().hex
+        original_name = Path(request.filename).name
+        media_path = MEDIA_DIR / f"{project_id}{upload_path.suffix.lower()}"
+        shutil.copyfile(upload_path, media_path)
+
+        result["project"]["id"] = project_id
+        result["project"]["title"] = Path(original_name).stem
+        result["project"]["filename"] = original_name
+        result["project"]["audio_url"] = f"/media/{media_path.name}"
+        PROJECTS[project_id] = result
+
+        try:
+            save_projects()
+        except Exception:
+            PROJECTS.pop(project_id, None)
+            media_path.unlink(missing_ok=True)
+            raise
+
+        return result
     finally:
         upload_path.unlink(missing_ok=True)
-
-    project_id = uuid.uuid4().hex
-    original_name = Path(request.filename).name
-    result["project"]["id"] = project_id
-    result["project"]["title"] = Path(original_name).stem
-    result["project"]["filename"] = original_name
-    PROJECTS[project_id] = result
-    save_projects()
-
-    return result
 
 
 @app.get("/api/projects")
@@ -244,7 +261,12 @@ async def delete_project(project_id: str):
     if project_id not in PROJECTS:
         raise HTTPException(status_code=404, detail="Project not found.")
 
-    del PROJECTS[project_id]
+    project = PROJECTS.pop(project_id)
+    audio_url = project.get("project", {}).get("audio_url")
+
+    if isinstance(audio_url, str) and audio_url.startswith("/media/"):
+        (MEDIA_DIR / Path(audio_url).name).unlink(missing_ok=True)
+
     save_projects()
 
     return {"deleted": project_id}

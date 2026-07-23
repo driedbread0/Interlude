@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import UploadPage from "./components/upload/UploadPage";
 import DiagnosticsWorkspace from "./components/workspace/DiagnosticsWorkspace";
 import ProjectDrawer from "./components/workspace/ProjectDrawer";
+import PixelBlast from "./components/visuals/PixelBlast";
 import { analyzeFile, deleteProject, fetchOptions, fetchProject, fetchProjects } from "./lib/api";
 
 /*
@@ -107,16 +108,26 @@ export default function App() {
 
   return (
     <>
-      {result ? (
-        <div className="animate-[workspaceIn_320ms_cubic-bezier(0.2,0.8,0.2,1)]">
+      <PixelBlast
+        className="ambient-pixel-field"
+        color="#B9AA93"
+        edgeFade={0}
+        patternDensity={0.55}
+        patternScale={2.75}
+        pixelSize={2}
+        pixelSizeJitter={0}
+        speed={0.1}
+        variant="diamond"
+      />
+
+      <div className="interlude-content-layer">
+        {result ? (
           <DiagnosticsWorkspace
             result={result}
             onNewAnalysis={handleNewAnalysis}
             onOpenProjects={() => setDrawerOpen(true)}
           />
-        </div>
-      ) : (
-        <div className="animate-[intakeIn_280ms_cubic-bezier(0.2,0.8,0.2,1)]">
+        ) : (
           <UploadPage
             options={options}
             selectedFile={selectedFile}
@@ -137,8 +148,8 @@ export default function App() {
             onOpenProjects={() => setDrawerOpen(true)}
             onSelectProject={handleSelectProject}
           />
-        </div>
-      )}
+        )}
+      </div>
 
       {error && (
         <div className="fixed bottom-4 left-1/2 z-50 max-w-xl -translate-x-1/2 border border-warning bg-paper px-4 py-3 text-sm font-bold text-warning shadow-panel">
